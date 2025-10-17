@@ -86,6 +86,10 @@
       transform: translate(-50%, -50%);
       cursor: none;
       image-rendering: pixelated;
+      max-width: 90%;  /* Allow some margin */
+      max-height: 90%;
+      width: auto;
+      height: auto;
     }
     .placeholder {
       position: absolute;
@@ -351,22 +355,390 @@
     function updateCanvasSize() {
       if (!remoteWidth || !remoteHeight) return;
       
-      const vpWidth = viewport.clientWidth;
-      const vpHeight = viewport.clientHeight;
+      const vpWidth = viewport.clientWidth * 0.9;  // Use 90% of viewport
+      const vpHeight = viewport.clientHeight * 0.9;
       const aspectRatio = remoteWidth / remoteHeight;
       const vpAspectRatio = vpWidth / vpHeight;
       
-      let width, height;
       if (vpAspectRatio > aspectRatio) {
-        height = vpHeight;
-        width = height * aspectRatio;
+        canvas.style.height = vpHeight + 'px';
+        canvas.style.width = 'auto';
       } else {
-        width = vpWidth;
-        height = width / aspectRatio;
+        canvas.style.width = vpWidth + 'px';
+        canvas.style.height = 'auto';
+      }
+    }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Remote Desktop</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .header {
+      background: #2a2a2a;
+      padding: 15px 20px;
+      border-bottom: 1px solid #3a3a3a;
+      flex-shrink: 0;
+    }
+    .connection-bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    input {
+      flex: 1;
+      padding: 10px;
+      background: #333;
+      border: 1px solid #444;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #0066cc;
+      border: none;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0052a3; }
+    button:disabled { background: #444; cursor: not-allowed; }
+    button.disconnect { background: #d32f2f; }
+    button.disconnect:hover { background: #b71c1c; }
+    .status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #888;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status.connected { color: #4caf50; }
+    .status.error { color: #f44336; }
+    .status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .viewport {
+      flex: 1;
+      position: relative;
+      background: #000;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #canvas {
+      display: none;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      cursor: none;
+      image-rendering: pixelated;
+      max-width: 90%;  /* Allow some margin */
+      max-height: 90%;
+      width: auto;
+      height: auto;
+    }
+    .placeholder {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #666;
+      z-index: 1;
+    }
+    .placeholder h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    .placeholder p {
+      font-size: 14px;
+    }
+    .stats {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 15px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: 'SF Mono', Monaco, monospace;
+      line-height: 1.6;
+      backdrop-filter: blur(10px);
+    }
+    .stats-label {
+      color: #888;
+      display: inline-block;
+      width: 60px;
+    }
+    .stats-value {
+      color: #4caf50;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="connection-bar">
+      <input type="text" id="wsUrl" placeholder="wss://your-tunnel.trycloudflare.com/ws?token=YOUR_TOKEN">
+      <button id="connectBtn">Connect</button>
+    </div>
+    <div class="status" id="status">Disconnected</div>
+  </div>
+  
+  <div class="viewport" id="viewport">
+    <div class="placeholder" id="placeholder">
+      <h2>🖥️ Not Connected</h2>
+      <p>Enter server URL with the token above to connect</p>
+    </div>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <div class="stats" id="stats" style="display: none;">
+      <div><span class="stats-label">Latency:</span> <span class="stats-value" id="latency">--</span> ms</div>
+      <div><span class="stats-label">FPS:</span> <span class="stats-value" id="fps">--</span></div>
+      <div><span class="stats-label">Resolution:</span> <span class="stats-value" id="resolution">--</span></div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+    let connected = false;
+    let pingInterval = null;
+    let lastPing = 0;
+    let frameCount = 0;
+    let lastFrameTime = Date.now();
+    let remoteWidth = 0;
+    let remoteHeight = 0;
+
+    const wsUrlInput = document.getElementById('wsUrl');
+    const connectBtn = document.getElementById('connectBtn');
+    const statusDiv = document.getElementById('status');
+    const placeholder = document.getElementById('placeholder');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const viewport = document.getElementById('viewport');
+    const statsDiv = document.getElementById('stats');
+    const latencySpan = document.getElementById('latency');
+    const fpsSpan = document.getElementById('fps');
+    const resolutionSpan = document.getElementById('resolution');
+
+    const savedUrl = localStorage.getItem('wsUrlBase');
+    if (savedUrl) wsUrlInput.value = savedUrl;
+
+    function setStatus(message, type) {
+      statusDiv.textContent = message;
+      statusDiv.className = 'status ' + type;
+    }
+
+    function disconnect() {
+      if (ws) ws.close();
+      if (pingInterval) clearInterval(pingInterval);
+      
+      ws = null;
+      connected = false;
+      
+      canvas.style.display = 'none';
+      placeholder.style.display = 'block';
+      statsDiv.style.display = 'none';
+      connectBtn.textContent = 'Connect';
+      connectBtn.className = '';
+      connectBtn.disabled = false;
+      setStatus('Disconnected', '');
+    }
+
+    function connect() {
+      const url = wsUrlInput.value.trim();
+      if (!url) {
+        setStatus('Please enter server URL', 'error');
+        return;
+      }
+
+      const urlWithoutToken = url.split('?token=')[0];
+      localStorage.setItem('wsUrlBase', urlWithoutToken);
+
+      connectBtn.disabled = true;
+      setStatus('Connecting...', '');
+
+      ws = new WebSocket(url);
+      
+      ws.onopen = function() {
+        setStatus('Connected', 'connected');
+        connected = true;
+        connectBtn.textContent = 'Disconnect';
+        connectBtn.className = 'disconnect';
+        connectBtn.disabled = false;
+        statsDiv.style.display = 'block';
+        
+        lastPing = Date.now();
+        ws.send(JSON.stringify({ type: 'ping' }));
+        
+        pingInterval = setInterval(function() {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            lastPing = Date.now();
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 5000);
+      };
+
+      ws.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        
+        if (msg.type === 'init') {
+          remoteWidth = msg.width;
+          remoteHeight = msg.height;
+          canvas.width = msg.width;
+          canvas.height = msg.height;
+          resolutionSpan.textContent = msg.width + 'x' + msg.height;
+          canvas.style.display = 'block';
+          placeholder.style.display = 'none';
+          updateCanvasSize();
+        } else if (msg.type === 'frame') {
+          const img = new Image();
+          img.onload = function() {
+            ctx.drawImage(img, 0, 0);
+            frameCount++;
+          };
+          img.src = 'data:image/jpeg;base64,' + msg.data;
+        } else if (msg.type === 'pong') {
+          const latency = Date.now() - lastPing;
+          latencySpan.textContent = latency;
+        }
+      };
+
+      ws.onerror = function() {
+        setStatus('Connection error', 'error');
+      };
+
+      ws.onclose = function() {
+        disconnect();
+      };
+    }
+
+    setInterval(function() {
+      if (connected) {
+        const now = Date.now();
+        const delta = (now - lastFrameTime) / 1000;
+        if (delta > 0) {
+          fpsSpan.textContent = Math.round(frameCount / delta);
+          frameCount = 0;
+          lastFrameTime = now;
+        }
+      }
+    }, 1000);
+
+    connectBtn.addEventListener('click', function() {
+      if (connected) {
+        disconnect();
+      } else {
+        connect();
+      }
+    });
+
+    function getCanvasCoordinates(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = remoteWidth / rect.width;
+      const scaleY = remoteHeight / rect.height;
+      
+      const x = (clientX - rect.left) * scaleX;
+      const y = (clientY - rect.top) * scaleY;
+      
+      if (x < 0 || x > remoteWidth || y < 0 || y > remoteHeight) {
+        return null;
       }
       
-      canvas.style.width = width + 'px';
-      canvas.style.height = height + 'px';
+      return { x: Math.round(x), y: Math.round(y) };
+    }
+
+    function sendInput(data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', data: data }));
+      }
+    }
+
+    canvas.addEventListener('mousemove', function(e) {
+      if (!connected) return;
+      const coords = getCanvasCoordinates(e.clientX, e.clientY);
+      if (coords) {
+        sendInput({ type: 'mousemove', x: coords.x, y: coords.y });
+      }
+    });
+
+    canvas.addEventListener('click', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      const coords = getCanvasCoordinates(e.clientX, e.clientY);
+      if (coords) {
+        sendInput({ type: 'click', x: coords.x, y: coords.y, button: e.button === 0 ? 'left' : 'right' });
+      }
+    });
+
+    canvas.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+
+    canvas.addEventListener('wheel', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      sendInput({ type: 'scroll', deltaY: e.deltaY });
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (!connected || e.target === wsUrlInput) return;
+      e.preventDefault();
+      sendInput({ type: 'key', key: e.key, down: true });
+    });
+
+    document.addEventListener('keyup', function(e) {
+      if (!connected || e.target === wsUrlInput) return;
+      e.preventDefault();
+      sendInput({ type: 'key', key: e.key, down: false });
+    });
+
+    viewport.addEventListener('click', function(e) {
+      if (connected && e.target === canvas) {
+        canvas.focus();
+      }
+    });
+
+    function updateCanvasSize() {
+      if (!remoteWidth || !remoteHeight) return;
+      
+      const vpWidth = viewport.clientWidth * 0.9;  // Use 90% of viewport
+      const vpHeight = viewport.clientHeight * 0.9;
+      const aspectRatio = remoteWidth / remoteHeight;
+      const vpAspectRatio = vpWidth / vpHeight;
+      
+      if (vpAspectRatio > aspectRatio) {
+        canvas.style.height = vpHeight + 'px';
+        canvas.style.width = 'auto';
+      } else {
+        canvas.style.width = vpWidth + 'px';
+        canvas.style.height = 'auto';
+      }
     }
     </script>
 </body>
