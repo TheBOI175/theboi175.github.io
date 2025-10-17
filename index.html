@@ -75,13 +75,18 @@
       overflow: hidden;
       background: #000;
       position: relative;
-    }
-    #canvas {
       width: 100%;
       height: 100%;
+    }
+    #canvas {
+      position: absolute;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
       object-fit: contain;
       cursor: none;
-      image-rendering: optimizeQuality;
+      image-rendering: pixelated;
       touch-action: none;
     }
     .placeholder {
@@ -231,6 +236,7 @@
           resolutionSpan.textContent = msg.width + 'x' + msg.height;
           canvas.style.display = 'block';
           placeholder.style.display = 'none';
+          updateCanvasSize();
         } else if (msg.type === 'frame') {
           const img = new Image();
           img.onload = function() {
@@ -338,6 +344,30 @@
         canvas.focus();
       }
     });
+
+    function updateCanvasSize() {
+      const vpWidth = viewport.clientWidth;
+      const vpHeight = viewport.clientHeight;
+      
+      if (remoteWidth && remoteHeight) {
+        const aspectRatio = remoteWidth / remoteHeight;
+        const vpAspectRatio = vpWidth / vpHeight;
+        
+        if (vpAspectRatio > aspectRatio) {
+          canvas.style.height = vpHeight + 'px';
+          canvas.style.width = 'auto';
+        } else {
+          canvas.style.width = vpWidth + 'px';
+          canvas.style.height = 'auto';
+        }
+      }
+    }
+
+    // Add resize observer
+    const resizeObserver = new ResizeObserver(() => {
+      updateCanvasSize();
+    });
+    resizeObserver.observe(viewport);
   </script>
 </body>
 </html>
