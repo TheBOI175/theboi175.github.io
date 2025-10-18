@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Remote Desktop - Optimized</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+    }
+    .header {
+      background: #2a2a2a;
+      padding: 15px 20px;
+      border-bottom: 1px solid #3a3a3a;
+      flex-shrink: 0;
+    }
+    .connection-bar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    input {
+      flex: 1;
+      padding: 10px;
+      background: #333;
+      border: 1px solid #444;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #0066cc;
+      border: none;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0052a3; }
+    button:disabled { background: #444; cursor: not-allowed; }
+    button.disconnect { background: #d32f2f; }
+    button.disconnect:hover { background: #b71c1c; }
+    .status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #888;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status.connected { color: #4caf50; }
+    .status.error { color: #f44336; }
+    .status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .viewport {
+      flex: 1;
+      position: relative;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .canvas-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #canvas {
+      display: block;
+      cursor: none;
+      image-rendering: auto;
+      object-fit: contain;
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+    #canvas.hidden { display: none; }
+    .placeholder {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #666;
+      z-index: 1;
+    }
+    .placeholder.hidden { display: none; }
+    .placeholder h2 { font-size: 24px; margin-bottom: 10px; }
+    .placeholder p { font-size: 14px; }
+    .stats {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.85);
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-family: 'SF Mono', Monaco, monospace;
+      line-height: 1.8;
+      backdrop-filter: blur(10px);
+      z-index: 10;
+      min-width: 200px;
+    }
+    .stats.hidden { display: none; }
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+    }
+    .stats-label { color: #888; }
+    .stats-value { color: #4caf50; font-weight: 600; }
+    .stats-warning { color: #ff9800; }
+    .stats-error { color: #f44336; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="connection-bar">
+      <input type="text" id="wsUrl" placeholder="wss://your-tunnel.trycloudflare.com/ws?token=YOUR_TOKEN">
+      <button id="connectBtn">Connect</button>
+    </div>
+    <div class="status" id="status">Disconnected</div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="placeholder" id="placeholder">
+      <h2>Not Connected</h2>
+      <p>Enter server URL above to connect</p>
+    </div>
+    <div class="canvas-wrapper">
+      <canvas id="canvas" class="hidden"></canvas>
+    </div>
+    <div class="stats hidden" id="stats">
+      <div class="stats-row"><span class="stats-label">Latency:</span> <span class="stats-value" id="latency">--</span></div>
+      <div class="stats-row"><span class="stats-label">FPS:</span> <span class="stats-value" id="fps">--</span></div>
+      <div class="stats-row"><span class="stats-label">Resolution:</span> <span class="stats-value" id="resolution">--</span></div>
+      <div class="stats-row"><span class="stats-label">Frames:</span> <span class="stats-value" id="frameInfo">--</span></div>
+      <div class="stats-row"><span class="stats-label">Dropped:</span> <span class="stats-value" id="droppedFrames">0</span></div>
+      <div class="stats-row"><span class="stats-label">Render:</span> <span class="stats-value" id="renderTime">--</span></div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let ws = null;
+    let connected = false;
+    let pingInterval = null;
+    let lastPing = 0;
+    let remoteWidth = 0;
+    let remoteHeight = 0;
+    let frameCount = 0;
+    let lastFrameTime = Date.now();
+    let framesDropped = 0;
+    let pendingFrameMeta = null;
+    let lastRenderTimes = [];
+    let modifiers = { ctrl: false, alt: false, shift: false, meta: false };
+    let mouseButtons = 0;
+    let lastClickTime = 0;
+    let lastClickPos = null;
+
+    // DOM
+    const wsUrlInput = document.getElementById('wsUrl');
+    const connectBtn = document.getElementById('connectBtn');
+    const statusDiv = document.getElementById('status');
+    const placeholder = document.getElementById('placeholder');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const statsDiv = document.getElementById('stats');
+
+    const savedUrl = localStorage.getItem('wsUrlBase');
+    if (savedUrl) wsUrlInput.value = savedUrl;
+
+    function setStatus(message, type) {
+      statusDiv.textContent = message;
+      statusDiv.className = 'status ' + type;
+    }
+
+    function getCanvasCoordinates(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = remoteWidth / rect.width;
+      const scaleY = remoteHeight / rect.height;
+      const x = (clientX - rect.left) * scaleX;
+      const y = (clientY - rect.top) * scaleY;
+      if (x < 0 || x > remoteWidth || y < 0 || y > remoteHeight) return null;
+      return { x: Math.round(x), y: Math.round(y) };
+    }
+
+    function sendInput(data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        if (!data.modifiers) data.modifiers = { ...modifiers };
+        ws.send(JSON.stringify({ type: 'input', data: data }));
+      }
+    }
+
+    function disconnect() {
+      if (ws) ws.close();
+      if (pingInterval) clearInterval(pingInterval);
+      ws = null;
+      connected = false;
+      canvas.classList.add('hidden');
+      placeholder.classList.remove('hidden');
+      statsDiv.classList.add('hidden');
+      connectBtn.textContent = 'Connect';
+      connectBtn.className = '';
+      connectBtn.disabled = false;
+      setStatus('Disconnected', '');
+    }
+
+    function connect() {
+      const url = wsUrlInput.value.trim();
+      if (!url) {
+        setStatus('Please enter server URL', 'error');
+        return;
+      }
+
+      const urlWithoutToken = url.split('?token=')[0];
+      localStorage.setItem('wsUrlBase', urlWithoutToken);
+
+      connectBtn.disabled = true;
+      setStatus('Connecting...', '');
+
+      ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = function() {
+        console.log('✅ WebSocket connected');
+        setStatus('Connected', 'connected');
+        connected = true;
+        connectBtn.textContent = 'Disconnect';
+        connectBtn.className = 'disconnect';
+        connectBtn.disabled = false;
+        statsDiv.classList.remove('hidden');
+
+        lastPing = Date.now();
+        ws.send(JSON.stringify({ type: 'ping' }));
+
+        pingInterval = setInterval(function() {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            lastPing = Date.now();
+            ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 5000);
+      };
+
+      ws.onmessage = function(event) {
+        if (event.data instanceof ArrayBuffer) {
+          // Binary frame
+          if (!pendingFrameMeta) {
+            console.warn('Received binary frame without metadata');
+            return;
+          }
+
+          const frameAge = Date.now() - pendingFrameMeta.timestamp;
+
+          // More lenient - 500ms timeout for slower Chromebooks
+          if (frameAge > 500) {
+            framesDropped++;
+            document.getElementById('droppedFrames').textContent = framesDropped;
+            document.getElementById('droppedFrames').className = 'stats-value stats-warning';
+            pendingFrameMeta = null;
+            return;
+          }
+
+          // Render
+          const renderStart = Date.now();
+          const blob = new Blob([event.data], { type: 'image/jpeg' });
+          const url = URL.createObjectURL(blob);
+
+          const img = new Image();
+          img.onload = function() {
+            try {
+              ctx.drawImage(img, 0, 0);
+              URL.revokeObjectURL(url);
+              frameCount++;
+
+              const renderTime = Date.now() - renderStart;
+              lastRenderTimes.push(renderTime);
+              if (lastRenderTimes.length > 10) lastRenderTimes.shift();
+
+              const avgRender = lastRenderTimes.reduce((a, b) => a + b, 0) / lastRenderTimes.length;
+              document.getElementById('renderTime').textContent = avgRender.toFixed(1) + 'ms';
+            } catch (err) {
+              console.error('Error rendering frame:', err);
+            }
+          };
+          img.onerror = function() {
+            console.error('Failed to load image');
+            URL.revokeObjectURL(url);
+          };
+          img.src = url;
+
+          pendingFrameMeta = null;
+        } else {
+          // JSON message
+          try {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'init') {
+              remoteWidth = msg.width;
+              remoteHeight = msg.height;
+              canvas.width = msg.width;
+              canvas.height = msg.height;
+              document.getElementById('resolution').textContent = msg.width + 'x' + msg.height;
+              canvas.classList.remove('hidden');
+              placeholder.classList.add('hidden');
+              console.log('✅ Initialized: ' + msg.width + 'x' + msg.height);
+            } else if (msg.type === 'frame_meta') {
+              pendingFrameMeta = msg;
+            } else if (msg.type === 'pong') {
+              const latency = Date.now() - lastPing;
+              const latencyEl = document.getElementById('latency');
+              latencyEl.textContent = latency + 'ms';
+              latencyEl.className = latency < 100 ? 'stats-value' : (latency < 200 ? 'stats-value stats-warning' : 'stats-value stats-error');
+            }
+          } catch (err) {
+            console.error('Error parsing message:', err, event.data);
+          }
+        }
+      };
+
+      ws.onerror = function(err) {
+        console.error('WebSocket error:', err);
+        setStatus('Connection error', 'error');
+      };
+
+      ws.onclose = function() {
+        console.log('❌ WebSocket closed');
+        disconnect();
+      };
+    }
+
+    // FPS counter
+    setInterval(function() {
+      if (connected) {
+        const now = Date.now();
+        const delta = (now - lastFrameTime) / 1000;
+        if (delta > 0) {
+          const fps = Math.round(frameCount / delta);
+          const fpsEl = document.getElementById('fps');
+          fpsEl.textContent = fps;
+          fpsEl.className = fps >= 10 ? 'stats-value' : 'stats-value stats-warning';
+
+          document.getElementById('frameInfo').textContent = frameCount + ' / ' + delta.toFixed(1) + 's';
+          frameCount = 0;
+          lastFrameTime = now;
+        }
+      }
+    }, 1000);
+
+    // Keyboard
+    document.addEventListener('keydown', function(e) {
+      if (!connected || e.target === wsUrlInput) return;
+      if (e.key === 'Control') modifiers.ctrl = true;
+      if (e.key === 'Alt') modifiers.alt = true;
+      if (e.key === 'Shift') modifiers.shift = true;
+      if (e.key === 'Meta') modifiers.meta = true;
+      if (e.key !== 'F5' && e.key !== 'F12' && !(e.metaKey && e.key === 'w')) e.preventDefault();
+      sendInput({ type: 'key', key: e.key, down: true });
+    });
+
+    document.addEventListener('keyup', function(e) {
+      if (!connected || e.target === wsUrlInput) return;
+      if (e.key === 'Control') modifiers.ctrl = false;
+      if (e.key === 'Alt') modifiers.alt = false;
+      if (e.key === 'Shift') modifiers.shift = false;
+      if (e.key === 'Meta') modifiers.meta = false;
+      e.preventDefault();
+      sendInput({ type: 'key', key: e.key, down: false });
+    });
+
+    // Mouse
+    canvas.addEventListener('mousemove', function(e) {
+      if (!connected) return;
+      const coords = getCanvasCoordinates(e.clientX, e.clientY);
+      if (coords) sendInput({ type: 'mousemove', x: coords.x, y: coords.y });
+    });
+
+    canvas.addEventListener('click', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      const coords = getCanvasCoordinates(e.clientX, e.clientY);
+      if (coords) {
+        sendInput({ type: 'click', x: coords.x, y: coords.y, button: e.button });
+      }
+    });
+
+    canvas.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+
+    canvas.addEventListener('wheel', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      sendInput({ type: 'scroll', deltaY: e.deltaY });
+    }, { passive: false });
+
+    // Touch support
+    let touchState = { touches: [], startTime: 0, longPressTimer: null };
+
+    canvas.addEventListener('touchstart', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      touchState.touches = Array.from(e.touches);
+      touchState.startTime = Date.now();
+
+      if (e.touches.length === 1) {
+        const coords = getCanvasCoordinates(e.touches[0].clientX, e.touches[0].clientY);
+        if (coords) {
+          touchState.longPressTimer = setTimeout(() => {
+            sendInput({ type: 'click', x: coords.x, y: coords.y, button: 2 });
+          }, 500);
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      if (touchState.longPressTimer) {
+        clearTimeout(touchState.longPressTimer);
+        touchState.longPressTimer = null;
+      }
+      if (e.touches.length === 1) {
+        const coords = getCanvasCoordinates(e.touches[0].clientX, e.touches[0].clientY);
+        if (coords) sendInput({ type: 'mousemove', x: coords.x, y: coords.y });
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', function(e) {
+      if (!connected) return;
+      e.preventDefault();
+      if (touchState.longPressTimer) {
+        clearTimeout(touchState.longPressTimer);
+        touchState.longPressTimer = null;
+      }
+      const duration = Date.now() - touchState.startTime;
+      if (e.touches.length === 0 && touchState.touches.length === 1 && duration < 300) {
+        const touch = touchState.touches[0];
+        const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+        if (coords) sendInput({ type: 'click', x: coords.x, y: coords.y, button: 0 });
+      }
+    }, { passive: false });
+
+    connectBtn.addEventListener('click', function() {
+      if (connected) disconnect();
+      else connect();
+    });
+  </script>
+</body>
+</html>
