@@ -72,7 +72,6 @@
       position: relative;
       background: #000;
       width: 100%;
-      height: 100%;
       overflow: hidden;
       display: flex;
       align-items: center;
@@ -80,17 +79,13 @@
     }
     #canvas {
       display: none;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+      position: absolute;
       cursor: none;
-      image-rendering: pixelated;
+      image-rendering: optimizeQuality;
+      touch-action: none;
     }
     .placeholder {
       position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
       text-align: center;
       color: #666;
       z-index: 1;
@@ -113,6 +108,7 @@
       font-family: 'SF Mono', Monaco, monospace;
       line-height: 1.6;
       backdrop-filter: blur(10px);
+      z-index: 10;
     }
     .stats-label {
       color: #888;
@@ -139,7 +135,7 @@
       <h2>🖥️ Not Connected</h2>
       <p>Enter server URL with the token above to connect</p>
     </div>
-    <canvas id="canvas" style="display: none;"></canvas>
+    <canvas id="canvas"></canvas>
     <div class="stats" id="stats" style="display: none;">
       <div><span class="stats-label">Latency:</span> <span class="stats-value" id="latency">--</span> ms</div>
       <div><span class="stats-label">FPS:</span> <span class="stats-value" id="fps">--</span></div>
@@ -171,6 +167,36 @@
 
     const savedUrl = localStorage.getItem('wsUrlBase');
     if (savedUrl) wsUrlInput.value = savedUrl;
+
+    // Resize canvas to fill viewport while maintaining aspect ratio
+    function updateCanvasSize() {
+      if (!remoteWidth || !remoteHeight) return;
+      
+      const vpWidth = viewport.clientWidth;
+      const vpHeight = viewport.clientHeight;
+      const remoteAspect = remoteWidth / remoteHeight;
+      const vpAspect = vpWidth / vpHeight;
+      
+      let displayWidth, displayHeight;
+      
+      if (vpAspect > remoteAspect) {
+        // Viewport is wider - fit to height
+        displayHeight = vpHeight;
+        displayWidth = displayHeight * remoteAspect;
+      } else {
+        // Viewport is taller - fit to width
+        displayWidth = vpWidth;
+        displayHeight = displayWidth / remoteAspect;
+      }
+      
+      canvas.style.width = displayWidth + 'px';
+      canvas.style.height = displayHeight + 'px';
+      canvas.style.left = ((vpWidth - displayWidth) / 2) + 'px';
+      canvas.style.top = ((vpHeight - displayHeight) / 2) + 'px';
+    }
+
+    // Update on window resize
+    window.addEventListener('resize', updateCanvasSize);
 
     function setStatus(message, type) {
       statusDiv.textContent = message;
@@ -346,53 +372,6 @@
         canvas.focus();
       }
     });
-
-    function updateCanvasSize() {
-      if (!remoteWidth || !remoteHeight) return;
-      
-      const vpWidth = viewport.clientWidth;
-      const vpHeight = viewport.clientHeight;
-      
-      // Always fill the viewport completely
-      canvas.style.width = vpWidth + 'px';
-      canvas.style.height = vpHeight + 'px';
-      canvas.style.marginLeft = '0';
-      canvas.style.marginTop = '0';
-    }
-
-    // Update the init message handler
-    ws.onmessage = function(event) {
-      const msg = JSON.parse(event.data);
-      
-      if (msg.type === 'init') {
-        remoteWidth = msg.width;
-        remoteHeight = msg.height;
-        canvas.width = msg.width;
-        canvas.height = msg.height;
-        resolutionSpan.textContent = msg.width + 'x' + msg.height;
-        canvas.style.display = 'block';
-        placeholder.style.display = 'none';
-        updateCanvasSize();
-      } else if (msg.type === 'frame') {
-        const img = new Image();
-        img.onload = function() {
-          ctx.drawImage(img, 0, 0);
-          frameCount++;
-        };
-        img.src = 'data:image/jpeg;base64,' + msg.data;
-      } else if (msg.type === 'pong') {
-        const latency = Date.now() - lastPing;
-        latencySpan.textContent = latency;
-      }
-    };
-
-    ws.onerror = function() {
-      setStatus('Connection error', 'error');
-    };
-
-    ws.onclose = function() {
-      disconnect();
-    };
-    </script>
+  </script>
 </body>
 </html>
