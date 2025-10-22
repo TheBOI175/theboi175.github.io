@@ -1,511 +1,711 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Pandemonium Minigame — Chaos Mode</title>
+  <meta charset="UTF-8">
+  <title>Google Drawings</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    html, body {
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
       margin: 0;
-      padding: 0;
-      background: black;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
     }
-
-    #game {
-      width: 100vw;
-      height: 100vh;
-      position: relative;
-      cursor: none;
-    }
-
-    #centerCircle {
-      position: absolute;
-      width: 80px;
-      height: 80px;
-      top: 50%;
-      left: 50%;
-      margin-left: -40px;
-      margin-top: -40px;
-      border: 3px dashed rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      transition: border-color 0.2s;
-    }
-
-    #centerCircle.active {
-      border-color: rgba(0, 255, 0, 0.6);
-    }
-
-    #cursorDot {
-      position: absolute;
-      width: 16px;
-      height: 16px;
+    .container {
+      width: 1200px;
+      max-width: 95%;
+      text-align: center;
       background: white;
-      border-radius: 50%;
-      pointer-events: none;
-      margin-left: -8px;
-      margin-top: -8px;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
-    }
-
-    #cursorDot.flinged {
-      background: #ff4444;
-    }
-
-    #energyBar {
-      position: absolute;
-      bottom: 100px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 300px;
-      height: 14px;
-      background: rgba(40, 0, 0, 0.8);
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      overflow: visible;
-      border-radius: 7px;
-    }
-
-    #energyFill {
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      height: 100%;
-      background: linear-gradient(90deg, #44ff44, #ffff44, #44ff44);
-      width: 100%;
-      transition: width 0.1s linear;
-      border-radius: 5px;
-    }
-
-    #message {
-      position: absolute;
-      top: 30px;
-      width: 100%;
-      text-align: center;
-      font-size: 22px;
-      font-weight: bold;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
-      transition: color 0.3s;
-    }
-
-    #timer {
-      position: absolute;
-      top: 65px;
-      width: 100%;
-      text-align: center;
-      font-size: 16px;
-      color: rgba(255, 255, 255, 0.7);
-      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-    }
-
-    #startButton {
-      position: absolute;
-      top: 55%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 15px 35px;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
-      display: inline-block;
-      background: #333;
-      color: white;
-      border: 3px solid white;
+      padding: 20px;
       border-radius: 8px;
-      transition: all 0.2s;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
-
-    #startButton:hover {
-      background: #555;
-      transform: translate(-50%, -50%) scale(1.05);
+    .chat-window {
+      border: 1px solid #ddd;
+      height: 600px;
+      overflow-y: auto;
+      padding: 12px;
+      text-align: left;
+      background: #fafafa;
+      border-radius: 4px;
+      margin-bottom: 12px;
     }
-
-    #ytPlayer { display: none; }
-
-    .fling-indicator {
-      position: absolute;
-      width: 40px;
-      height: 40px;
-      border: 2px solid rgba(255, 80, 80, 0.8);
+    .message {
+      margin-bottom: 16px;
+      padding: 8px;
+      border-radius: 4px;
+      position: relative;
+    }
+    .message.user {
+      background: #e3f2fd;
+      margin-left: 40px;
+    }
+    .message.assistant {
+      background: #f5f5f5;
+      margin-right: 40px;
+    }
+    .message.system {
+      background: #fff3cd;
+      font-style: italic;
+      font-size: 0.9em;
+    }
+    .message-header {
+      font-weight: bold;
+      font-size: 0.85em;
+      color: #666;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .message-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .message-actions button {
+      padding: 2px 6px;
+      font-size: 0.75em;
+      border: none;
+      background: #ddd;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .message-actions button:hover {
+      background: #ccc;
+    }
+    .message-content {
+      line-height: 1.5;
+    }
+    .message-content pre {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .message-content code {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+    .message-content pre code {
+      background: none;
+      padding: 0;
+    }
+    .timestamp {
+      font-size: 0.75em;
+      color: #999;
+    }
+    textarea {
+      width: 100%;
+      height: 60px;
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 8px 16px;
+      margin: 4px;
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+    button:hover {
+      background: #f5f5f5;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.primary {
+      background: #2196F3;
+      color: white;
+      border-color: #2196F3;
+    }
+    button.primary:hover:not(:disabled) {
+      background: #1976D2;
+    }
+    .menu {
+      margin-top: 10px;
+      text-align: left;
+      border: 1px solid #ddd;
+      padding: 12px;
+      border-radius: 4px;
+      background: #fafafa;
+    }
+    .menu h4 {
+      margin-top: 0;
+    }
+    .menu label {
+      display: block;
+      margin: 8px 0 4px 0;
+      font-size: 0.9em;
+      font-weight: 500;
+    }
+    .menu input, .menu textarea, .menu select {
+      width: 100%;
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #2196F3;
       border-radius: 50%;
-      pointer-events: none;
-      animation: flingPulse 0.4s ease-out;
+      animation: spin 1s linear infinite;
     }
-
-    @keyframes flingPulse {
-      0% { 
-        transform: scale(0.5); 
-        opacity: 1;
-      }
-      100% { 
-        transform: scale(2); 
-        opacity: 0;
-      }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .stats {
+      font-size: 0.85em;
+      color: #666;
+      margin-top: 8px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-radius: 4px;
+    }
+    .error {
+      background: #ffebee;
+      color: #c62828;
+      padding: 8px;
+      border-radius: 4px;
+      margin: 8px 0;
     }
   </style>
 </head>
 <body>
-  <div id="game">
-    <div id="centerCircle"></div>
-    <div id="cursorDot"></div>
-    <div id="energyBar"><div id="energyFill"></div></div>
-    <div id="message">Keep the cursor in the center while the music plays...</div>
-    <div id="timer"></div>
-    <button id="startButton">Start Minigame</button>
-    <div id="ytPlayer"></div>
-  </div>
+  <div id="root"></div>
 
-  <script src="https://www.youtube.com/iframe_api"></script>
-  <script>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-  // ================= CONFIG =================
-  const CONFIG = {
-    centerRadius: 50,        // Radius of the center circle
-    gracePeriod: 6500,        // Time before flings start (ms)
-    
-    flingStrength: 50,             // Strong enough to always hit edges
-    flingRecoil: 0.5,              // Extra shake after fling
-    flingInterval: 3,          // Average seconds between flings
-    burstChance: 0.35,
-    
-    mouseControl: 0.5,          // How much mouse movement affects velocity
-    jitterIntensity: 6,          // Smooth constant shake
-    smoothing: 0.85,               // Velocity damping (0-1), lower is more slippery
-    
-    fillRate: 3,
-    drainRate: 1,
-    
-    videoId: 'Tj6ewHqYZpQ'
-  };
+    function ChatApp() {
+      const [conversations, setConversations] = useState([]);
+      const [personality, setPersonality] = useState("");
+      const [userInput, setUserInput] = useState("");
+      const [apiKey, setApiKey] = useState("");
+      const [model, setModel] = useState("gemini-2.0-flash-exp");
+      const [showMenu, setShowMenu] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [error, setError] = useState("");
+      const [lastUserMessage, setLastUserMessage] = useState("");
+      const [editingIndex, setEditingIndex] = useState(null);
+      const [editText, setEditText] = useState("");
+      const [streaming, setStreaming] = useState(true);
+      const [temperature, setTemperature] = useState(1.0);
+      const [maxTokens, setMaxTokens] = useState(8192);
+      
+      const chatWindowRef = useRef(null);
+      const textareaRef = useRef(null);
 
-  // ================= DOM ELEMENTS =================
-  const game = document.getElementById("game");
-  const cursorDot = document.getElementById("cursorDot");
-  const centerCircle = document.getElementById("centerCircle");
-  const energyFill = document.getElementById("energyFill");
-  const message = document.getElementById("message");
-  const timer = document.getElementById("timer");
-  const startButton = document.getElementById("startButton");
+      useEffect(() => {
+        if (chatWindowRef.current) {
+          chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
+        }
+      }, [conversations]);
 
-  // ================= GAME STATE =================
-  let pos = { x: window.innerWidth/2, y: window.innerHeight/2 };
-  let vel = { x: 0, y: 0 };
-  let jitter = { x: 0, y: 0 };
-  let energy = 1;
+      const formatTimestamp = (date) => {
+        return date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      };
 
-  let player = null;
-  let videoDuration = 30000;
-  let startTime = null;
-  let running = false;
-  let flingTimer = null;
-  let rafId = null;
-  let lastFrame = null;
-  let flingCount = 0;
+      const sendMessage = async () => {
+        const text = userInput.trim();
+        if (!text || isLoading) return;
 
-  // ================= UTILS =================
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const lerp = (a, b, t) => a + (b - a) * t;
-  
-  const getCenter = () => {
-    const rect = centerCircle.getBoundingClientRect();
-    return { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
-  };
-  
-  const setCursorPos = (x, y) => {
-    cursorDot.style.left = `${x}px`;
-    cursorDot.style.top = `${y}px`;
-  };
+        const newMessage = {
+          role: "user",
+          content: text,
+          timestamp: new Date()
+        };
 
-  // ================= VISUAL FEEDBACK =================
-  function showFlingIndicator(x, y) {
-    const indicator = document.createElement('div');
-    indicator.className = 'fling-indicator';
-    indicator.style.left = `${x - 20}px`;
-    indicator.style.top = `${y - 20}px`;
-    game.appendChild(indicator);
-    setTimeout(() => indicator.remove(), 400);
-  }
+        setLastUserMessage(text);
+        setConversations(prev => [...prev, newMessage]);
+        setUserInput("");
+        setError("");
+        
+        await getAIResponse([...conversations, newMessage]);
+      };
 
-  function flashCursor() {
-    cursorDot.classList.add('flinged');
-    setTimeout(() => cursorDot.classList.remove('flinged'), 200);
-  }
-
-  // ================= YOUTUBE =================
-  function onYouTubeIframeAPIReady() {
-    player = new YT.Player('ytPlayer', {
-      height: '0', width: '0', videoId: CONFIG.videoId,
-      playerVars: { autoplay: 0, controls: 0, disablekb: 1 },
-      events: { 'onReady': () => {
-        const check = setInterval(() => {
-          const dur = player.getDuration();
-          if(dur > 0){ 
-            videoDuration = dur * 1000; 
-            clearInterval(check); 
+      const regenerate = async () => {
+        if (!lastUserMessage || isLoading) return;
+        
+        setConversations(prev => {
+          const newConv = [...prev];
+          if (newConv.length && newConv[newConv.length - 1].role === "assistant") {
+            newConv.pop();
           }
-        }, 100);
-      }}
-    });
-  }
-
-  // ================= FLING MECHANICS =================
-  function fling(isBurst = false) {
-    const elapsed = Date.now() - startTime;
-    if (elapsed < CONFIG.gracePeriod) return;
-    
-    flingCount++;
-    
-    // Pick a completely random direction
-    const angle = Math.random() * Math.PI * 2;
-    
-    // Calculate required velocity to reach edge
-    const distToEdgeX = angle > Math.PI/2 && angle < 3*Math.PI/2 ? 
-                        pos.x : window.innerWidth - pos.x;
-    const distToEdgeY = angle > 0 && angle < Math.PI ? 
-                        window.innerHeight - pos.y : pos.y;
-    
-    // Strong base power that guarantees edge hit
-    const timeFactor = Math.min(2.5, 1 + (flingCount * 0.05));
-    const power = CONFIG.flingStrength * timeFactor * (isBurst ? 0.8 : 1);
-    
-    // Apply velocity in random direction
-    vel.x = Math.cos(angle) * power;
-    vel.y = Math.sin(angle) * power;
-    
-    // Add recoil jitter
-    jitter.x += (Math.random() - 0.5) * CONFIG.flingRecoil * 30;
-    jitter.y += (Math.random() - 0.5) * CONFIG.flingRecoil * 30;
-    
-    showFlingIndicator(pos.x, pos.y);
-    if (!isBurst) flashCursor();
-  }
-
-  function tryBurstFling() {
-    const elapsed = Date.now() - startTime;
-    if (elapsed < CONFIG.gracePeriod) return;
-    
-    if (Math.random() < CONFIG.burstChance) {
-      const burstCount = Math.floor(Math.random() * 2) + 2;
-      for (let i = 0; i < burstCount; i++) {
-        setTimeout(() => fling(true), i * 120);
-      }
-    } else {
-      fling();
-    }
-  }
-
-  // ================= INPUT =================
-  function handlePointerMove(e) {
-    if (!running) return;
-    vel.x += e.movementX * CONFIG.mouseControl;
-    vel.y += e.movementY * CONFIG.mouseControl;
-  }
-
-  // ================= UPDATE LOOP =================
-  function update(dt) {
-    // Smooth damping
-    vel.x *= CONFIG.smoothing;
-    vel.y *= CONFIG.smoothing;
-    
-    if (Math.abs(vel.x) < 0.05) vel.x = 0;
-    if (Math.abs(vel.y) < 0.05) vel.y = 0;
-    
-    // Smooth jitter - always present for shakiness
-    const jitterTarget = {
-      x: (Math.random() - 0.5) * CONFIG.jitterIntensity * 3,
-      y: (Math.random() - 0.5) * CONFIG.jitterIntensity * 3
-    };
-    jitter.x = lerp(jitter.x, jitterTarget.x, 0.25);
-    jitter.y = lerp(jitter.y, jitterTarget.y, 0.25);
-    
-    // Move cursor with jitter overlay
-    pos.x += vel.x + jitter.x;
-    pos.y += vel.y + jitter.y;
-
-    // Edge bounce
-    const margin = 8;
-    
-    if (pos.x <= margin) {
-      pos.x = margin;
-      vel.x = Math.abs(vel.x) * 0.6;
-    } else if (pos.x >= window.innerWidth - margin) {
-      pos.x = window.innerWidth - margin;
-      vel.x = -Math.abs(vel.x) * 0.6;
-    }
-    
-    if (pos.y <= margin) {
-      pos.y = margin;
-      vel.y = Math.abs(vel.y) * 0.6;
-    } else if (pos.y >= window.innerHeight - margin) {
-      pos.y = window.innerHeight - margin;
-      vel.y = -Math.abs(vel.y) * 0.6;
-    }
-
-    // Energy
-    const center = getCenter();
-    const dist = Math.hypot(pos.x - center.x, pos.y - center.y);
-    const inCenter = dist <= CONFIG.centerRadius;
-    
-    energy += (inCenter ? CONFIG.fillRate : -CONFIG.drainRate) * dt;
-    energy = clamp(energy, 0, 1);
-
-    centerCircle.classList.toggle('active', inCenter);
-    energyFill.style.width = `${energy * 100}%`;
-
-    // Timer
-    const elapsed = Date.now() - startTime;
-    const remaining = Math.max(0, videoDuration - elapsed);
-    const gracePeriodRemaining = Math.max(0, CONFIG.gracePeriod - elapsed);
-    
-    if (gracePeriodRemaining > 0) {
-      timer.innerText = `Grace: ${(gracePeriodRemaining / 1000).toFixed(1)}s | Time: ${(remaining / 1000).toFixed(1)}s`;
-      timer.style.color = '#88ff88';
-      message.innerText = "Get ready...";
-      message.style.color = '#88ff88';
-    } else {
-      if (elapsed < CONFIG.gracePeriod + 100) {
-        message.innerText = "⚠️ CHAOS UNLEASHED! ⚠️";
-        message.style.color = '#ff4444';
+          return newConv;
+        });
+        
         setTimeout(() => {
-          if (running) {
-            message.innerText = "Survive!";
-            message.style.color = 'white';
+          setConversations(prev => {
+            getAIResponse(prev);
+            return prev;
+          });
+        }, 100);
+      };
+
+      const getAIResponse = async (messages) => {
+        if (!apiKey.trim()) {
+          setError("Please enter your API key in the menu");
+          return;
+        }
+
+        setIsLoading(true);
+        setError("");
+
+        try {
+          if (streaming) {
+            await streamResponse(messages);
+          } else {
+            await standardResponse(messages);
           }
-        }, 1500);
-      }
-      timer.innerText = `Time: ${(remaining / 1000).toFixed(1)}s`;
-      timer.style.color = 'white';
+        } catch (err) {
+          setError(`Error: ${err.message}`);
+          setConversations(prev => [...prev, {
+            role: "assistant",
+            content: `Error: ${err.message}`,
+            timestamp: new Date(),
+            isError: true
+          }]);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      const standardResponse = async (messages) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+        const contents = buildContents(messages);
+
+        const payload = {
+          contents: contents,
+          generationConfig: {
+            temperature: temperature,
+            maxOutputTokens: maxTokens,
+          }
+        };
+
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const errorData = await resp.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "(no reply)";
+
+        setConversations(prev => [...prev, {
+          role: "assistant",
+          content: reply,
+          timestamp: new Date()
+        }]);
+      };
+
+      const streamResponse = async (messages) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+
+        const contents = buildContents(messages);
+
+        const payload = {
+          contents: contents,
+          generationConfig: {
+            temperature: temperature,
+            maxOutputTokens: maxTokens,
+          }
+        };
+
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const errorData = await resp.json().catch(() => ({}));
+          throw new Error(errorData.error?.message || `HTTP ${resp.status}`);
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = "";
+        
+        const streamingMessage = {
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+          streaming: true
+        };
+        
+        setConversations(prev => [...prev, streamingMessage]);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const jsonStr = line.slice(6);
+                const data = JSON.parse(jsonStr);
+                const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (text) {
+                  accumulatedText += text;
+                  setConversations(prev => {
+                    const newConv = [...prev];
+                    newConv[newConv.length - 1] = {
+                      ...newConv[newConv.length - 1],
+                      content: accumulatedText
+                    };
+                    return newConv;
+                  });
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+
+        // Mark streaming as complete
+        setConversations(prev => {
+          const newConv = [...prev];
+          if (newConv.length > 0) {
+            delete newConv[newConv.length - 1].streaming;
+          }
+          return newConv;
+        });
+      };
+
+      const buildContents = (messages) => {
+        const contents = [];
+
+        if (personality.trim()) {
+          contents.push({
+            role: "user",
+            parts: [{ text: `System Personality: ${personality}` }]
+          });
+          contents.push({
+            role: "model",
+            parts: [{ text: "Understood. I will adopt this personality in my responses." }]
+          });
+        }
+
+        messages.forEach(msg => {
+          if (msg.role === "user") {
+            contents.push({
+              role: "user",
+              parts: [{ text: msg.content }]
+            });
+          } else if (msg.role === "assistant" && !msg.isError) {
+            contents.push({
+              role: "model",
+              parts: [{ text: msg.content }]
+            });
+          }
+        });
+
+        return contents;
+      };
+
+      const copyMessage = (content) => {
+        navigator.clipboard.writeText(content).then(() => {
+          alert("Copied to clipboard!");
+        });
+      };
+
+      const deleteMessage = (index) => {
+        if (confirm("Delete this message?")) {
+          setConversations(prev => prev.filter((_, i) => i !== index));
+        }
+      };
+
+      const startEdit = (index, content) => {
+        setEditingIndex(index);
+        setEditText(content);
+      };
+
+      const saveEdit = () => {
+        if (editingIndex !== null) {
+          setConversations(prev => {
+            const newConv = [...prev];
+            newConv[editingIndex].content = editText;
+            return newConv;
+          });
+          setEditingIndex(null);
+          setEditText("");
+        }
+      };
+
+      const cancelEdit = () => {
+        setEditingIndex(null);
+        setEditText("");
+      };
+
+      const exportConversation = () => {
+        const data = {
+          personality,
+          conversations: conversations.map(c => ({
+            role: c.role,
+            content: c.content,
+            timestamp: c.timestamp
+          })),
+          exportDate: new Date()
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat-export-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      const importConversation = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = JSON.parse(e.target.result);
+            if (data.personality) setPersonality(data.personality);
+            if (data.conversations) {
+              setConversations(data.conversations.map(c => ({
+                ...c,
+                timestamp: new Date(c.timestamp)
+              })));
+            }
+            alert("Conversation imported successfully!");
+          } catch (err) {
+            alert("Error importing conversation: " + err.message);
+          }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+      };
+
+      const clearConversation = () => {
+        if (confirm("Clear entire conversation?")) {
+          setConversations([]);
+          setLastUserMessage("");
+          setError("");
+        }
+      };
+
+      const handleKeyPress = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      };
+
+      const renderMarkdown = (content) => {
+        const html = marked.parse(content);
+        return { __html: html };
+      };
+
+      const getStats = () => {
+        const msgCount = conversations.length;
+        const userCount = conversations.filter(c => c.role === "user").length;
+        const aiCount = conversations.filter(c => c.role === "assistant").length;
+        const totalChars = conversations.reduce((sum, c) => sum + c.content.length, 0);
+        return { msgCount, userCount, aiCount, totalChars };
+      };
+
+      const stats = getStats();
+
+      return (
+        <div className="container">
+          <h2>Enhanced AI Chat</h2>
+
+          <div className="chat-window" ref={chatWindowRef}>
+            {conversations.map((msg, index) => (
+              <div key={index} className={`message ${msg.role}`}>
+                <div className="message-header">
+                  <span>
+                    {msg.role === "user" ? "You" : "AI"}
+                    <span className="timestamp"> • {formatTimestamp(msg.timestamp)}</span>
+                  </span>
+                  {!msg.streaming && (
+                    <div className="message-actions">
+                      <button onClick={() => copyMessage(msg.content)} title="Copy">📋</button>
+                      <button onClick={() => startEdit(index, msg.content)} title="Edit">✏️</button>
+                      <button onClick={() => deleteMessage(index)} title="Delete">🗑️</button>
+                    </div>
+                  )}
+                </div>
+                {editingIndex === index ? (
+                  <div>
+                    <textarea 
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      style={{ height: '100px', marginBottom: '8px' }}
+                    />
+                    <button onClick={saveEdit} className="primary">Save</button>
+                    <button onClick={cancelEdit}>Cancel</button>
+                  </div>
+                ) : (
+                  <div 
+                    className="message-content"
+                    dangerouslySetInnerHTML={renderMarkdown(msg.content)}
+                  />
+                )}
+              </div>
+            ))}
+            {isLoading && (
+              <div className="message system">
+                <div className="loading"></div> AI is thinking...
+              </div>
+            )}
+          </div>
+
+          {error && <div className="error">{error}</div>}
+
+          <textarea
+            ref={textareaRef}
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Type your message... (Shift+Enter for new line)"
+            disabled={isLoading}
+          />
+
+          <div>
+            <button onClick={sendMessage} disabled={isLoading || !userInput.trim()} className="primary">
+              Send
+            </button>
+            <button onClick={regenerate} disabled={isLoading || !lastUserMessage}>
+              Regenerate
+            </button>
+            <button onClick={() => setShowMenu(!showMenu)}>
+              {showMenu ? "Hide Menu" : "Menu"}
+            </button>
+            <button onClick={exportConversation} disabled={conversations.length === 0}>
+              Export
+            </button>
+            <label>
+              <button>Import</button>
+              <input 
+                type="file" 
+                accept=".json" 
+                onChange={importConversation}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
+
+          <div className="stats">
+            Messages: {stats.msgCount} • User: {stats.userCount} • AI: {stats.aiCount} • Characters: {stats.totalChars.toLocaleString()}
+          </div>
+
+          {showMenu && (
+            <div className="menu">
+              <h4>Settings</h4>
+              
+              <label>Personality (System Prompt):</label>
+              <textarea
+                value={personality}
+                onChange={(e) => setPersonality(e.target.value)}
+                placeholder="e.g., You are a helpful assistant who speaks like a pirate..."
+                style={{ height: '80px' }}
+              />
+
+              <label>API Key:</label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="AIza... (Get from Google AI Studio)"
+              />
+
+              <label>Model:</label>
+              <select value={model} onChange={(e) => setModel(e.target.value)}>
+                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B</option>
+              </select>
+
+              <label>Temperature ({temperature}):</label>
+              <input
+                type="range"
+                min="0"
+                max="2"
+                step="0.1"
+                value={temperature}
+                onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              />
+
+              <label>Max Tokens ({maxTokens}):</label>
+              <input
+                type="range"
+                min="256"
+                max="8192"
+                step="256"
+                value={maxTokens}
+                onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+              />
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={streaming}
+                  onChange={(e) => setStreaming(e.target.checked)}
+                />
+                {' '}Enable Streaming
+              </label>
+
+              <div style={{ marginTop: '12px' }}>
+                <button onClick={clearConversation}>Clear Conversation</button>
+              </div>
+
+              <div style={{ marginTop: '12px', fontSize: '0.85em', color: '#666' }}>
+                <strong>Note:</strong> Conversations are stored in memory only and will be lost on page refresh. 
+                Use Export to save your chats.
+              </div>
+            </div>
+          )}
+        </div>
+      );
     }
 
-    if (energy <= 0) endGame(false);
-    if (elapsed >= videoDuration) endGame(true);
-
-    setCursorPos(pos.x, pos.y);
-  }
-
-  function loop(ts) {
-    if (!lastFrame) lastFrame = ts;
-    const dt = Math.min(0.05, (ts - lastFrame) / 1000);
-    lastFrame = ts;
-    update(dt);
-    if (running) rafId = requestAnimationFrame(loop);
-  }
-
-  // ================= POINTER LOCK =================
-  function requestPointerLock() {
-    game.requestPointerLock = game.requestPointerLock || 
-                               game.mozRequestPointerLock || 
-                               game.webkitRequestPointerLock;
-    if (game.requestPointerLock) game.requestPointerLock();
-  }
-
-  function handlePointerLockChange() {
-    if (document.pointerLockElement !== game && running) {
-      endGame(false);
-    }
-  }
-
-  document.addEventListener("pointerlockchange", handlePointerLockChange);
-  document.addEventListener("mozpointerlockchange", handlePointerLockChange);
-  document.addEventListener("webkitpointerlockchange", handlePointerLockChange);
-
-  // ================= START / END =================
-  function startGame() {
-    if (!player) { 
-      alert("YouTube not ready!"); 
-      return; 
-    }
-
-    energy = 1;
-    pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    vel = { x: 0, y: 0 };
-    jitter = { x: 0, y: 0 };
-    flingCount = 0;
-    setCursorPos(pos.x, pos.y);
-    startTime = Date.now();
-    running = true;
-    lastFrame = null;
-    
-    message.innerText = "Get ready...";
-    message.style.color = 'white';
-    timer.style.display = "block";
-    startButton.style.display = "none";
-
-    document.addEventListener("mousemove", handlePointerMove);
-
-    try {
-      player.seekTo(0);
-      player.playVideo();
-    } catch(e) {
-      console.error("YouTube error:", e);
-    }
-
-    flingTimer = setInterval(tryBurstFling, CONFIG.flingInterval * 1000);
-    rafId = requestAnimationFrame(loop);
-  }
-
-  function endGame(won) {
-    if (!running) return;
-    running = false;
-    
-    cancelAnimationFrame(rafId);
-    clearInterval(flingTimer);
-    document.removeEventListener("mousemove", handlePointerMove);
-    
-    if (player) {
-      try { player.pauseVideo(); } catch(e) {}
-    }
-
-    if (document.exitPointerLock) document.exitPointerLock();
-
-    centerCircle.classList.remove('active');
-    timer.style.display = "none";
-
-    message.innerText = won ? 
-      "✅ YOU WIN! ✅" : 
-      "❌ YOU LOSE ❌";
-    message.style.color = won ? '#44ff44' : '#ff4444';
-    
-    startButton.innerText = "Retry";
-    startButton.style.display = "inline-block";
-  }
-
-  // ================= INIT =================
-  window.addEventListener("mousemove", (e) => {
-    if (!running && !document.pointerLockElement) {
-      setCursorPos(e.clientX, e.clientY);
-    }
-  });
-
-  startButton.addEventListener("click", () => {
-    requestPointerLock();
-
-    const startIfLocked = () => {
-      if (document.pointerLockElement === game) {
-        document.removeEventListener("pointerlockchange", startIfLocked);
-        document.removeEventListener("mozpointerlockchange", startIfLocked);
-        document.removeEventListener("webkitpointerlockchange", startIfLocked);
-        startGame();
-      }
-    };
-    
-    document.addEventListener("pointerlockchange", startIfLocked);
-    document.addEventListener("mozpointerlockchange", startIfLocked);
-    document.addEventListener("webkitpointerlockchange", startIfLocked);
-    
-    setTimeout(() => {
-      if (!document.pointerLockElement) {
-        document.removeEventListener("pointerlockchange", startIfLocked);
-        document.removeEventListener("mozpointerlockchange", startIfLocked);
-        document.removeEventListener("webkitpointerlockchange", startIfLocked);
-        alert("Click 'Allow' for pointer lock!");
-      }
-    }, 3000);
-  });
-
-  setCursorPos(pos.x, pos.y);
-  timer.style.display = "none";
+    ReactDOM.render(<ChatApp />, document.getElementById('root'));
   </script>
 </body>
 </html>
