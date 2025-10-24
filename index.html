@@ -1,711 +1,222 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Google Drawings</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Docs..</title>
   <style>
     body {
+      font-family: Arial, sans-serif;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
+      height: 100vh;
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f5f5;
+      background-color: #f5f5f5;
     }
+    
     .container {
-      width: 1200px;
-      max-width: 95%;
       text-align: center;
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
-    .chat-window {
-      border: 1px solid #ddd;
-      height: 600px;
-      overflow-y: auto;
-      padding: 12px;
-      text-align: left;
-      background: #fafafa;
-      border-radius: 4px;
-      margin-bottom: 12px;
-    }
-    .message {
-      margin-bottom: 16px;
-      padding: 8px;
-      border-radius: 4px;
-      position: relative;
-    }
-    .message.user {
-      background: #e3f2fd;
-      margin-left: 40px;
-    }
-    .message.assistant {
-      background: #f5f5f5;
-      margin-right: 40px;
-    }
-    .message.system {
-      background: #fff3cd;
-      font-style: italic;
-      font-size: 0.9em;
-    }
-    .message-header {
+    
+    .open-button {
+      padding: 15px 40px;
+      font-size: 24px;
       font-weight: bold;
-      font-size: 0.85em;
-      color: #666;
-      margin-bottom: 4px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .message-actions {
-      display: flex;
-      gap: 8px;
-    }
-    .message-actions button {
-      padding: 2px 6px;
-      font-size: 0.75em;
+      cursor: pointer;
       border: none;
-      background: #ddd;
-      border-radius: 3px;
-      cursor: pointer;
-    }
-    .message-actions button:hover {
-      background: #ccc;
-    }
-    .message-content {
-      line-height: 1.5;
-    }
-    .message-content pre {
-      background: #2d2d2d;
-      color: #f8f8f2;
-      padding: 10px;
-      border-radius: 4px;
-      overflow-x: auto;
-    }
-    .message-content code {
-      background: #2d2d2d;
-      color: #f8f8f2;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 0.9em;
-    }
-    .message-content pre code {
-      background: none;
-      padding: 0;
-    }
-    .timestamp {
-      font-size: 0.75em;
-      color: #999;
-    }
-    textarea {
-      width: 100%;
-      height: 60px;
-      margin-top: 8px;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-family: inherit;
-      resize: vertical;
-      box-sizing: border-box;
-    }
-    button {
-      padding: 8px 16px;
-      margin: 4px;
-      border: 1px solid #ddd;
-      background: white;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.9em;
-    }
-    button:hover {
-      background: #f5f5f5;
-    }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    button.primary {
-      background: #2196F3;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #000000, #ff0000);
       color: white;
-      border-color: #2196F3;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    button.primary:hover:not(:disabled) {
-      background: #1976D2;
+    
+    .open-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
     }
-    .menu {
-      margin-top: 10px;
-      text-align: left;
-      border: 1px solid #ddd;
-      padding: 12px;
-      border-radius: 4px;
-      background: #fafafa;
+    
+    .open-button:active {
+      transform: translateY(1px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     }
-    .menu h4 {
-      margin-top: 0;
-    }
-    .menu label {
-      display: block;
-      margin: 8px 0 4px 0;
-      font-size: 0.9em;
-      font-weight: 500;
-    }
-    .menu input, .menu textarea, .menu select {
+    
+    .iframe-container {
+      position: fixed;
+      top: 0;
+      left: 0;
       width: 100%;
-      padding: 6px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-family: inherit;
-      box-sizing: border-box;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
     }
-    .loading {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #2196F3;
+    
+    .iframe-wrapper {
+      position: relative;
+      width: 90%;
+      height: 90%;
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+    }
+    
+    .close-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      background-color: #ff0000;
+      color: white;
+      border: none;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1010;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    
+    .close-button:hover {
+      background-color: #cc0000;
     }
-    .stats {
-      font-size: 0.85em;
+    
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    
+    .file-input {
+      display: none;
+    }
+    
+    .file-label {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: linear-gradient(to bottom, #ffffff, #e0e0e0);
+      color: #555;
+      border-radius: 6px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 2px 4px rgba(0, 0, 0, 0.1);
+      border: 1px solid #ccc;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .file-label:hover {
+      background: linear-gradient(to bottom, #f8f8f8, #d8d8d8);
+    }
+    
+    .file-label:active {
+      background: linear-gradient(to bottom, #d8d8d8, #f0f0f0);
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1);
+      transform: translateY(1px);
+    }
+    
+    .file-name {
+      margin-top: 10px;
+      font-style: italic;
       color: #666;
-      margin-top: 8px;
-      padding: 8px;
-      background: #f5f5f5;
-      border-radius: 4px;
-    }
-    .error {
-      background: #ffebee;
-      color: #c62828;
-      padding: 8px;
-      border-radius: 4px;
-      margin: 8px 0;
+      min-height: 20px;
     }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div class="container">
+    <input type="file" id="fileInput" class="file-input" accept=".html,.htm">
+    <label for="fileInput" class="file-label">Click to select an HTML file</label>
+    <div id="fileName" class="file-name"></div>
+    <button id="openButton" class="open-button" disabled>Initiate</button>
+  </div>
+  
+  <div id="iframeContainer" class="iframe-container">
+    <div class="iframe-wrapper">
+      <button id="closeButton" class="close-button">X</button>
+      <iframe id="htmlViewer" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups allow-modals allow-pointer-lock"></iframe>
+    </div>
+  </div>
 
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    function ChatApp() {
-      const [conversations, setConversations] = useState([]);
-      const [personality, setPersonality] = useState("");
-      const [userInput, setUserInput] = useState("");
-      const [apiKey, setApiKey] = useState("");
-      const [model, setModel] = useState("gemini-2.0-flash-exp");
-      const [showMenu, setShowMenu] = useState(false);
-      const [isLoading, setIsLoading] = useState(false);
-      const [error, setError] = useState("");
-      const [lastUserMessage, setLastUserMessage] = useState("");
-      const [editingIndex, setEditingIndex] = useState(null);
-      const [editText, setEditText] = useState("");
-      const [streaming, setStreaming] = useState(true);
-      const [temperature, setTemperature] = useState(1.0);
-      const [maxTokens, setMaxTokens] = useState(8192);
-      
-      const chatWindowRef = useRef(null);
-      const textareaRef = useRef(null);
-
-      useEffect(() => {
-        if (chatWindowRef.current) {
-          chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
-        }
-      }, [conversations]);
-
-      const formatTimestamp = (date) => {
-        return date.toLocaleTimeString('en-US', { 
-          hour: 'numeric', 
-          minute: '2-digit',
-          hour12: true 
-        });
-      };
-
-      const sendMessage = async () => {
-        const text = userInput.trim();
-        if (!text || isLoading) return;
-
-        const newMessage = {
-          role: "user",
-          content: text,
-          timestamp: new Date()
-        };
-
-        setLastUserMessage(text);
-        setConversations(prev => [...prev, newMessage]);
-        setUserInput("");
-        setError("");
-        
-        await getAIResponse([...conversations, newMessage]);
-      };
-
-      const regenerate = async () => {
-        if (!lastUserMessage || isLoading) return;
-        
-        setConversations(prev => {
-          const newConv = [...prev];
-          if (newConv.length && newConv[newConv.length - 1].role === "assistant") {
-            newConv.pop();
-          }
-          return newConv;
-        });
-        
-        setTimeout(() => {
-          setConversations(prev => {
-            getAIResponse(prev);
-            return prev;
-          });
-        }, 100);
-      };
-
-      const getAIResponse = async (messages) => {
-        if (!apiKey.trim()) {
-          setError("Please enter your API key in the menu");
-          return;
-        }
-
-        setIsLoading(true);
-        setError("");
-
-        try {
-          if (streaming) {
-            await streamResponse(messages);
-          } else {
-            await standardResponse(messages);
-          }
-        } catch (err) {
-          setError(`Error: ${err.message}`);
-          setConversations(prev => [...prev, {
-            role: "assistant",
-            content: `Error: ${err.message}`,
-            timestamp: new Date(),
-            isError: true
-          }]);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      const standardResponse = async (messages) => {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-        const contents = buildContents(messages);
-
-        const payload = {
-          contents: contents,
-          generationConfig: {
-            temperature: temperature,
-            maxOutputTokens: maxTokens,
-          }
-        };
-
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        if (!resp.ok) {
-          const errorData = await resp.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `HTTP ${resp.status}`);
-        }
-
-        const data = await resp.json();
-        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "(no reply)";
-
-        setConversations(prev => [...prev, {
-          role: "assistant",
-          content: reply,
-          timestamp: new Date()
-        }]);
-      };
-
-      const streamResponse = async (messages) => {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
-
-        const contents = buildContents(messages);
-
-        const payload = {
-          contents: contents,
-          generationConfig: {
-            temperature: temperature,
-            maxOutputTokens: maxTokens,
-          }
-        };
-
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        if (!resp.ok) {
-          const errorData = await resp.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `HTTP ${resp.status}`);
-        }
-
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulatedText = "";
-        
-        const streamingMessage = {
-          role: "assistant",
-          content: "",
-          timestamp: new Date(),
-          streaming: true
-        };
-        
-        setConversations(prev => [...prev, streamingMessage]);
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const jsonStr = line.slice(6);
-                const data = JSON.parse(jsonStr);
-                const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                
-                if (text) {
-                  accumulatedText += text;
-                  setConversations(prev => {
-                    const newConv = [...prev];
-                    newConv[newConv.length - 1] = {
-                      ...newConv[newConv.length - 1],
-                      content: accumulatedText
-                    };
-                    return newConv;
-                  });
-                }
-              } catch (e) {
-                // Skip invalid JSON
-              }
-            }
-          }
-        }
-
-        // Mark streaming as complete
-        setConversations(prev => {
-          const newConv = [...prev];
-          if (newConv.length > 0) {
-            delete newConv[newConv.length - 1].streaming;
-          }
-          return newConv;
-        });
-      };
-
-      const buildContents = (messages) => {
-        const contents = [];
-
-        if (personality.trim()) {
-          contents.push({
-            role: "user",
-            parts: [{ text: `System Personality: ${personality}` }]
-          });
-          contents.push({
-            role: "model",
-            parts: [{ text: "Understood. I will adopt this personality in my responses." }]
-          });
-        }
-
-        messages.forEach(msg => {
-          if (msg.role === "user") {
-            contents.push({
-              role: "user",
-              parts: [{ text: msg.content }]
-            });
-          } else if (msg.role === "assistant" && !msg.isError) {
-            contents.push({
-              role: "model",
-              parts: [{ text: msg.content }]
-            });
-          }
-        });
-
-        return contents;
-      };
-
-      const copyMessage = (content) => {
-        navigator.clipboard.writeText(content).then(() => {
-          alert("Copied to clipboard!");
-        });
-      };
-
-      const deleteMessage = (index) => {
-        if (confirm("Delete this message?")) {
-          setConversations(prev => prev.filter((_, i) => i !== index));
-        }
-      };
-
-      const startEdit = (index, content) => {
-        setEditingIndex(index);
-        setEditText(content);
-      };
-
-      const saveEdit = () => {
-        if (editingIndex !== null) {
-          setConversations(prev => {
-            const newConv = [...prev];
-            newConv[editingIndex].content = editText;
-            return newConv;
-          });
-          setEditingIndex(null);
-          setEditText("");
-        }
-      };
-
-      const cancelEdit = () => {
-        setEditingIndex(null);
-        setEditText("");
-      };
-
-      const exportConversation = () => {
-        const data = {
-          personality,
-          conversations: conversations.map(c => ({
-            role: c.role,
-            content: c.content,
-            timestamp: c.timestamp
-          })),
-          exportDate: new Date()
-        };
-        
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `chat-export-${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      };
-
-      const importConversation = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const openButton = document.getElementById('openButton');
+    const iframeContainer = document.getElementById('iframeContainer');
+    const closeButton = document.getElementById('closeButton');
+    const htmlViewer = document.getElementById('htmlViewer');
+    
+    let currentBlobURL = null;
+    
+    fileInput.addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (file) {
+        fileName.textContent = `Selected: ${file.name}`;
+        openButton.disabled = false;
+      } else {
+        fileName.textContent = '';
+        openButton.disabled = true;
+      }
+    });
+    
+    openButton.addEventListener('click', function() {
+      const file = fileInput.files[0];
+      if (file) {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          try {
-            const data = JSON.parse(e.target.result);
-            if (data.personality) setPersonality(data.personality);
-            if (data.conversations) {
-              setConversations(data.conversations.map(c => ({
-                ...c,
-                timestamp: new Date(c.timestamp)
-              })));
-            }
-            alert("Conversation imported successfully!");
-          } catch (err) {
-            alert("Error importing conversation: " + err.message);
+        
+        reader.onload = function(e) {
+          if (currentBlobURL) {
+            URL.revokeObjectURL(currentBlobURL);
           }
+          
+          // Create a blob URL for the HTML content
+          const blob = new Blob([e.target.result], {type: 'text/html'});
+          currentBlobURL = URL.createObjectURL(blob);
+          
+          // Set the iframe source to the blob URL
+          htmlViewer.src = currentBlobURL;
+          
+          // Show the iframe container
+          iframeContainer.style.display = 'flex';
+          
+          // Focus the iframe after a short delay
+          setTimeout(() => {
+            htmlViewer.focus();
+          }, 300);
         };
+        
         reader.readAsText(file);
-        event.target.value = '';
-      };
-
-      const clearConversation = () => {
-        if (confirm("Clear entire conversation?")) {
-          setConversations([]);
-          setLastUserMessage("");
-          setError("");
+      }
+    });
+    
+    closeButton.addEventListener('click', function() {
+      // Hide the iframe container
+      iframeContainer.style.display = 'none';
+      
+      // Clear the iframe source
+      htmlViewer.src = 'about:blank';
+      
+      // If pointer lock is active, exit it
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    });
+    
+    // Allow closing with escape key
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape' && iframeContainer.style.display === 'flex') {
+        if (!document.pointerLockElement) {
+          closeButton.click();
         }
-      };
-
-      const handleKeyPress = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendMessage();
-        }
-      };
-
-      const renderMarkdown = (content) => {
-        const html = marked.parse(content);
-        return { __html: html };
-      };
-
-      const getStats = () => {
-        const msgCount = conversations.length;
-        const userCount = conversations.filter(c => c.role === "user").length;
-        const aiCount = conversations.filter(c => c.role === "assistant").length;
-        const totalChars = conversations.reduce((sum, c) => sum + c.content.length, 0);
-        return { msgCount, userCount, aiCount, totalChars };
-      };
-
-      const stats = getStats();
-
-      return (
-        <div className="container">
-          <h2>Gemini Chat</h2>
-
-          <div className="chat-window" ref={chatWindowRef}>
-            {conversations.map((msg, index) => (
-              <div key={index} className={`message ${msg.role}`}>
-                <div className="message-header">
-                  <span>
-                    {msg.role === "user" ? "You" : "AI"}
-                    <span className="timestamp"> • {formatTimestamp(msg.timestamp)}</span>
-                  </span>
-                  {!msg.streaming && (
-                    <div className="message-actions">
-                      <button onClick={() => copyMessage(msg.content)} title="Copy">📋</button>
-                      <button onClick={() => startEdit(index, msg.content)} title="Edit">✏️</button>
-                      <button onClick={() => deleteMessage(index)} title="Delete">🗑️</button>
-                    </div>
-                  )}
-                </div>
-                {editingIndex === index ? (
-                  <div>
-                    <textarea 
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      style={{ height: '100px', marginBottom: '8px' }}
-                    />
-                    <button onClick={saveEdit} className="primary">Save</button>
-                    <button onClick={cancelEdit}>Cancel</button>
-                  </div>
-                ) : (
-                  <div 
-                    className="message-content"
-                    dangerouslySetInnerHTML={renderMarkdown(msg.content)}
-                  />
-                )}
-              </div>
-            ))}
-            {isLoading && (
-              <div className="message system">
-                <div className="loading"></div> AI is thinking...
-              </div>
-            )}
-          </div>
-
-          {error && <div className="error">{error}</div>}
-
-          <textarea
-            ref={textareaRef}
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type your message... (Shift+Enter for new line)"
-            disabled={isLoading}
-          />
-
-          <div>
-            <button onClick={sendMessage} disabled={isLoading || !userInput.trim()} className="primary">
-              Send
-            </button>
-            <button onClick={regenerate} disabled={isLoading || !lastUserMessage}>
-              Regenerate
-            </button>
-            <button onClick={() => setShowMenu(!showMenu)}>
-              {showMenu ? "Hide Menu" : "Menu"}
-            </button>
-            <button onClick={exportConversation} disabled={conversations.length === 0}>
-              Export
-            </button>
-            <label>
-              <button>Import</button>
-              <input 
-                type="file" 
-                accept=".json" 
-                onChange={importConversation}
-                style={{ display: 'none' }}
-              />
-            </label>
-          </div>
-
-          <div className="stats">
-            Messages: {stats.msgCount} • User: {stats.userCount} • AI: {stats.aiCount} • Characters: {stats.totalChars.toLocaleString()}
-          </div>
-
-          {showMenu && (
-            <div className="menu">
-              <h4>Settings</h4>
-              
-              <label>Personality (System Prompt):</label>
-              <textarea
-                value={personality}
-                onChange={(e) => setPersonality(e.target.value)}
-                placeholder="e.g., You are a helpful assistant who speaks like a pirate..."
-                style={{ height: '80px' }}
-              />
-
-              <label>API Key:</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="AIza... (Get from Google AI Studio)"
-              />
-
-              <label>Model:</label>
-              <select value={model} onChange={(e) => setModel(e.target.value)}>
-                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B</option>
-              </select>
-
-              <label>Temperature ({temperature}):</label>
-              <input
-                type="range"
-                min="0"
-                max="2"
-                step="0.1"
-                value={temperature}
-                onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              />
-
-              <label>Max Tokens ({maxTokens}):</label>
-              <input
-                type="range"
-                min="256"
-                max="8192"
-                step="256"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-              />
-
-              <label>
-                <input
-                  type="checkbox"
-                  checked={streaming}
-                  onChange={(e) => setStreaming(e.target.checked)}
-                />
-                {' '}Enable Streaming
-              </label>
-
-              <div style={{ marginTop: '12px' }}>
-                <button onClick={clearConversation}>Clear Conversation</button>
-              </div>
-
-              <div style={{ marginTop: '12px', fontSize: '0.85em', color: '#666' }}>
-                <strong>Note:</strong> Conversations are stored in memory only and will be lost on page refresh. 
-                Use Export to save your chats.
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    ReactDOM.render(<ChatApp />, document.getElementById('root'));
+      }
+    });
   </script>
 </body>
 </html>
