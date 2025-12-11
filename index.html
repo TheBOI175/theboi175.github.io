@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Google Slides</title>
+    <title>Rip Chat</title>
 </head>
 <body>
 
@@ -16,7 +16,7 @@
                     <table width="400" cellpadding="10">
                         <tr>
                             <td align="center">
-                                <h1>Rip Chat</h1>
+                                <h1>&#128483; Rip Chat</h1>
                                 <p>Voice chat rooms for you and your friends</p>
                                 <hr width="100%">
                             </td>
@@ -120,6 +120,8 @@
                                     <ul id="userList">
                                         <li><i>No users yet...</i></li>
                                     </ul>
+                                    <hr>
+                                    <small>&#128264; = Unmuted &nbsp; &#128263; = Muted</small>
                                 </fieldset>
                             </td>
                         </tr>
@@ -127,13 +129,13 @@
                         <tr>
                             <td>
                                 <fieldset>
-                                    <legend><b>Audio Controls</b></legend>
+                                    <legend><b>Your Microphone</b></legend>
                                     <table width="100%">
                                         <tr>
                                             <td align="center">
                                                 <button id="muteBtn" onclick="toggleMute()">&#128263; Mute</button>
                                                 &nbsp;&nbsp;
-                                                <span id="muteStatus">&#128264; Unmuted</span>
+                                                <span id="muteStatus">&#128264; <b>Unmuted</b></span>
                                             </td>
                                         </tr>
                                     </table>
@@ -144,7 +146,10 @@
                         <tr>
                             <td align="center">
                                 <br>
-                                <p id="roomStatus"><i>Connected</i></p>
+                                <fieldset>
+                                    <legend><b>Status</b></legend>
+                                    <p id="roomStatus"><i>Connected</i></p>
+                                </fieldset>
                             </td>
                         </tr>
                     </table>
@@ -171,7 +176,6 @@
 
         const socket = io(SERVER_URL);
 
-        // WebRTC configuration
         const rtcConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -183,6 +187,7 @@
         let localStream = null;
         let peerConnections = {};
         let isMuted = false;
+        let usersInRoom = {};  // { oddjobs-uuid: { username, muted } }
 
         // ============ DOM ELEMENTS ============
         const lobbyDiv = document.getElementById('lobby');
@@ -192,6 +197,15 @@
         const userList = document.getElementById('userList');
         const audioContainer = document.getElementById('audioContainer');
 
+        // ============ STATUS HELPER ============
+        function updateStatus(message, color = 'black') {
+            roomStatus.innerHTML = `<font color="${color}">${message}</font>`;
+        }
+
+        function getTimestamp() {
+            return new Date().toLocaleTimeString();
+        }
+
         // ============ SOCKET EVENT HANDLERS ============
 
         socket.on('connect', () => {
@@ -200,46 +214,73 @@
 
         socket.on('disconnect', () => {
             lobbyStatus.innerHTML = '<font color="red">&#10008; Disconnected from server.</font>';
-            roomStatus.innerHTML = '<font color="red">&#10008; Lost connection to server.</font>';
+            updateStatus('&#10008; Lost connection to server. Trying to reconnect...', 'red');
         });
 
         socket.on('error', (message) => {
             alert('Error: ' + message);
+            updateStatus('&#10008; Error: ' + message, 'red');
         });
 
         socket.on('room-created', async ({ roomCode, username }) => {
             showRoom(roomCode, username);
+            updateStatus('&#9203; Starting microphone...', 'blue');
             await startLocalAudio();
             userList.innerHTML = '';
-            addUserToList(socket.id, username + ' (You)');
-            roomStatus.innerHTML = '<font color="green">&#10004; Room created. Share the code!</font>';
+            usersInRoom = {};
+            usersInRoom[socket.id] = { username: username + ' (You)', muted: false };
+            updateUserList();
+            updateStatus('&#10004; Room created! Share code: <b>' + roomCode + '</b>', 'green');
         });
 
         socket.on('room-joined', async ({ roomCode, username, existingUsers }) => {
             showRoom(roomCode, username);
+            updateStatus('&#9203; Starting microphone...', 'blue');
             await startLocalAudio();
+            
             userList.innerHTML = '';
-            addUserToList(socket.id, username + ' (You)');
-
+            usersInRoom = {};
+            usersInRoom[socket.id] = { username: username + ' (You)', muted: false };
+            
+            updateStatus('&#9203; Connecting to ' + existingUsers.length + ' user(s)...', 'blue');
+            
             for (const user of existingUsers) {
-                addUserToList(user.socketId, user.username);
+                usersInRoom[user.socketId] = { username: user.username, muted: user.muted || false };
                 await createPeerConnection(user.socketId, true);
             }
-            roomStatus.innerHTML = '<font color="green">&#10004; Joined room!</font>';
+            
+            updateUserList();
+            updateStatus('&#10004; Joined room! Connected to ' + existingUsers.length + ' user(s)', 'green');
         });
 
-        socket.on('user-joined', async ({ username, socketId }) => {
-            addUserToList(socketId, username);
-            roomStatus.innerHTML = '<font color="blue">&#8594; ' + username + ' joined</font>';
+        socket.on('user-joined', async ({ username, socketId, muted }) => {
+            usersInRoom[socketId] = { username, muted: muted || false };
+            updateUserList();
+            updateStatus('&#8594; <b>' + username + '</b> joined the room [' + getTimestamp() + ']', 'blue');
         });
 
         socket.on('user-left', ({ socketId, username }) => {
-            removeUserFromList(socketId);
+            delete usersInRoom[socketId];
+            updateUserList();
             closePeerConnection(socketId);
-            roomStatus.innerHTML = '<font color="orange">&#8592; ' + username + ' left</font>';
+            updateStatus('&#8592; <b>' + username + '</b> left the room [' + getTimestamp() + ']', 'orange');
+        });
+
+        socket.on('user-mute-changed', ({ socketId, muted }) => {
+            if (usersInRoom[socketId]) {
+                usersInRoom[socketId].muted = muted;
+                updateUserList();
+                const username = usersInRoom[socketId].username;
+                if (muted) {
+                    updateStatus('&#128263; <b>' + username + '</b> muted [' + getTimestamp() + ']', 'gray');
+                } else {
+                    updateStatus('&#128264; <b>' + username + '</b> unmuted [' + getTimestamp() + ']', 'green');
+                }
+            }
         });
 
         socket.on('offer', async ({ offer, fromId, fromUsername }) => {
+            updateStatus('&#9203; Connecting to <b>' + fromUsername + '</b>...', 'blue');
             await createPeerConnection(fromId, false);
             await peerConnections[fromId].setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await peerConnections[fromId].createAnswer();
@@ -250,6 +291,7 @@
         socket.on('answer', async ({ answer, fromId }) => {
             if (peerConnections[fromId]) {
                 await peerConnections[fromId].setRemoteDescription(new RTCSessionDescription(answer));
+                updateStatus('&#10004; Voice connected!', 'green');
             }
         });
 
@@ -259,6 +301,24 @@
             }
         });
 
+        // ============ USER LIST ============
+
+        function updateUserList() {
+            userList.innerHTML = '';
+            const userCount = Object.keys(usersInRoom).length;
+            
+            for (const [socketId, user] of Object.entries(usersInRoom)) {
+                const li = document.createElement('li');
+                li.id = 'user-' + socketId;
+                
+                const muteIcon = user.muted ? '&#128263;' : '&#128264;';
+                const muteColor = user.muted ? 'gray' : 'green';
+                
+                li.innerHTML = `<font color="${muteColor}">${muteIcon}</font> ${user.username}`;
+                userList.appendChild(li);
+            }
+        }
+
         // ============ ROOM ACTIONS ============
 
         function createRoom() {
@@ -267,6 +327,7 @@
                 alert('Please enter your name first!');
                 return;
             }
+            lobbyStatus.innerHTML = '<font color="blue">&#9203; Creating room...</font>';
             socket.emit('create-room', username);
         }
 
@@ -282,6 +343,7 @@
                 alert('Please enter a room code!');
                 return;
             }
+            lobbyStatus.innerHTML = '<font color="blue">&#9203; Joining room...</font>';
             socket.emit('join-room', { roomCode, username });
         }
 
@@ -297,8 +359,12 @@
                 localStream = null;
             }
 
+            usersInRoom = {};
             userList.innerHTML = '<li><i>No users yet...</i></li>';
             audioContainer.innerHTML = '';
+            isMuted = false;
+            document.getElementById('muteBtn').innerHTML = '&#128263; Mute';
+            document.getElementById('muteStatus').innerHTML = '&#128264; <b>Unmuted</b>';
 
             roomDiv.hidden = true;
             lobbyDiv.hidden = false;
@@ -322,6 +388,7 @@
                 });
             } catch (err) {
                 alert('Could not access microphone: ' + err.message);
+                updateStatus('&#10008; Microphone error: ' + err.message, 'red');
                 throw err;
             }
         }
@@ -334,10 +401,22 @@
                 track.enabled = !isMuted;
             });
             
+            // Update UI
             document.getElementById('muteBtn').innerHTML = isMuted ? '&#128264; Unmute' : '&#128263; Mute';
             document.getElementById('muteStatus').innerHTML = isMuted 
-                ? '<font color="red">&#128263; Muted</font>' 
-                : '&#128264; Unmuted';
+                ? '<font color="red">&#128263; <b>Muted</b></font>' 
+                : '&#128264; <b>Unmuted</b>';
+            
+            // Update local user in list
+            if (usersInRoom[socket.id]) {
+                usersInRoom[socket.id].muted = isMuted;
+                updateUserList();
+            }
+            
+            // Tell server about mute status
+            socket.emit('mute-status', { muted: isMuted });
+            
+            updateStatus(isMuted ? '&#128263; You muted yourself' : '&#128264; You unmuted yourself', isMuted ? 'gray' : 'green');
         }
 
         // ============ WEBRTC FUNCTIONS ============
@@ -366,7 +445,14 @@
             };
 
             pc.onconnectionstatechange = () => {
-                console.log(`Connection to ${targetId}: ${pc.connectionState}`);
+                const state = pc.connectionState;
+                console.log(`Connection to ${targetId}: ${state}`);
+                
+                if (state === 'connected') {
+                    updateStatus('&#10004; Voice connected!', 'green');
+                } else if (state === 'disconnected' || state === 'failed') {
+                    updateStatus('&#10008; Voice connection issue', 'orange');
+                }
             };
 
             if (isInitiator) {
@@ -386,19 +472,7 @@
             removeAudioElement(targetId);
         }
 
-        // ============ UI HELPERS ============
-
-        function addUserToList(socketId, username) {
-            const li = document.createElement('li');
-            li.id = 'user-' + socketId;
-            li.textContent = username;
-            userList.appendChild(li);
-        }
-
-        function removeUserFromList(socketId) {
-            const li = document.getElementById('user-' + socketId);
-            if (li) li.remove();
-        }
+        // ============ AUDIO ELEMENTS ============
 
         function createAudioElement(peerId, stream) {
             removeAudioElement(peerId);
