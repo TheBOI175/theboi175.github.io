@@ -297,6 +297,7 @@
         socket.on('error', (message) => {
             showLobbyError(message);
             updateStatus('&#10008; ' + message, 'red');
+            setButtonsEnabled(true);  // Re-enable buttons on error
         });
 
         socket.on('room-created', async ({ roomCode, username }) => {
@@ -314,6 +315,16 @@
                 updateStatus('&#10004; Room created! Share code: <b>' + roomCode + '</b>', 'green');
             } catch (err) {
                 updateStatus('&#10008; Microphone error: ' + err.message, 'red');
+                // Go back to lobby after mic error
+                setTimeout(() => {
+                    socket.emit('leave-room');
+                    currentRoomCode = null;
+                    currentUsername = null;
+                    roomDiv.hidden = true;
+                    lobbyDiv.hidden = false;
+                    showLobbyError('Microphone access denied. Please allow microphone and try again.');
+                    setButtonsEnabled(true);
+                }, 2000);
             }
         });
 
@@ -341,6 +352,17 @@
                 updateStatus('&#10004; Joined room! Connected to ' + existingUsers.length + ' user(s)', 'green');
             } catch (err) {
                 updateStatus('&#10008; Error: ' + err.message, 'red');
+                // Go back to lobby after error
+                setTimeout(() => {
+                    socket.emit('leave-room');
+                    currentRoomCode = null;
+                    currentUsername = null;
+                    usersInRoom = {};
+                    roomDiv.hidden = true;
+                    lobbyDiv.hidden = false;
+                    showLobbyError('Microphone access denied. Please allow microphone and try again.');
+                    setButtonsEnabled(true);
+                }, 2000);
             }
         });
 
