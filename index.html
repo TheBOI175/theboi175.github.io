@@ -32,6 +32,7 @@
                                             <td><input type="text" id="usernameInput" placeholder="Your name" maxlength="20" size="25"></td>
                                         </tr>
                                     </table>
+                                    <small>Letters, numbers, spaces, dashes, underscores only</small>
                                 </fieldset>
                             </td>
                         </tr>
@@ -44,7 +45,7 @@
                                         <tr>
                                             <td align="center">
                                                 <p><b>Create New Room</b></p>
-                                                <button onclick="createRoom()">&#10010; Create Room</button>
+                                                <button id="createBtn" onclick="createRoom()">&#10010; Create Room</button>
                                                 <br><br>
                                                 <small>Get a code to share with friends</small>
                                             </td>
@@ -59,8 +60,9 @@
                                         <tr>
                                             <td align="center">
                                                 <p><b>Join Existing Room</b></p>
-                                                <input type="text" id="roomCodeInput" placeholder="ABC123" maxlength="6" size="10">
-                                                <button onclick="joinRoom()">&#10148; Join</button>
+                                                <input type="text" id="roomCodeInput" placeholder="ABC123" maxlength="6" size="10" 
+                                                       onkeyup="this.value = this.value.toUpperCase()">
+                                                <button id="joinBtn" onclick="joinRoom()">&#10148; Join</button>
                                                 <br><br>
                                                 <small>Enter the 6-letter room code</small>
                                             </td>
@@ -74,6 +76,7 @@
                             <td align="center">
                                 <br>
                                 <p id="lobbyStatus"><i>Connecting to server...</i></p>
+                                <p id="lobbyError" hidden><font color="red"></font></p>
                             </td>
                         </tr>
                     </table>
@@ -96,7 +99,10 @@
                                     <table width="100%" cellpadding="5">
                                         <tr>
                                             <td width="100">Room Code:</td>
-                                            <td><b><font size="+1"><span id="displayRoomCode">------</span></font></b></td>
+                                            <td>
+                                                <b><font size="+1"><span id="displayRoomCode">------</span></font></b>
+                                                <button onclick="copyRoomCode()" title="Copy to clipboard">&#128203;</button>
+                                            </td>
                                         </tr>
                                         <tr>
                                             <td>Your Name:</td>
@@ -116,7 +122,7 @@
                         <tr>
                             <td>
                                 <fieldset>
-                                    <legend><b>Users in Room</b></legend>
+                                    <legend><b>Users in Room (<span id="userCount">0</span>)</b></legend>
                                     <ul id="userList">
                                         <li><i>No users yet...</i></li>
                                     </ul>
@@ -149,6 +155,7 @@
                                 <fieldset>
                                     <legend><b>Status</b></legend>
                                     <p id="roomStatus"><i>Connected</i></p>
+                                    <small id="connectionIndicator">&#128994; Connected</small>
                                 </fieldset>
                             </td>
                         </tr>
@@ -174,7 +181,13 @@
         
         // ════════════════════════════════════════════════════════════════
 
-        const socket = io(SERVER_URL);
+        const socket = io(SERVER_URL, {
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
+        });
 
         const rtcConfig = {
             iceServers: [
@@ -187,17 +200,24 @@
         let localStream = null;
         let peerConnections = {};
         let isMuted = false;
-        let usersInRoom = {};  // { oddjobs-uuid: { username, muted } }
+        let usersInRoom = {};
+        let currentRoomCode = null;
+        let currentUsername = null;
+        let isConnected = false;
+        let reconnectAttempt = 0;
 
         // ============ DOM ELEMENTS ============
         const lobbyDiv = document.getElementById('lobby');
         const roomDiv = document.getElementById('room');
         const lobbyStatus = document.getElementById('lobbyStatus');
+        const lobbyError = document.getElementById('lobbyError');
         const roomStatus = document.getElementById('roomStatus');
         const userList = document.getElementById('userList');
         const audioContainer = document.getElementById('audioContainer');
+        const connectionIndicator = document.getElementById('connectionIndicator');
 
-        // ============ STATUS HELPER ============
+        // ============ HELPERS ============
+        
         function updateStatus(message, color = 'black') {
             roomStatus.innerHTML = `<font color="${color}">${message}</font>`;
         }
@@ -206,64 +226,135 @@
             return new Date().toLocaleTimeString();
         }
 
+        function showLobbyError(message) {
+            lobbyError.innerHTML = `<font color="red">&#10008; ${message}</font>`;
+            lobbyError.hidden = false;
+            setTimeout(() => { lobbyError.hidden = true; }, 5000);
+        }
+
+        function setButtonsEnabled(enabled) {
+            document.getElementById('createBtn').disabled = !enabled;
+            document.getElementById('joinBtn').disabled = !enabled;
+        }
+
+        function updateConnectionIndicator(connected) {
+            if (connected) {
+                connectionIndicator.innerHTML = '&#128994; Connected';
+            } else {
+                connectionIndicator.innerHTML = '&#128308; Disconnected';
+            }
+        }
+
+        function copyRoomCode() {
+            const code = document.getElementById('displayRoomCode').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                updateStatus('&#10004; Room code copied!', 'green');
+            }).catch(() => {
+                updateStatus('&#10008; Could not copy code', 'red');
+            });
+        }
+
         // ============ SOCKET EVENT HANDLERS ============
 
         socket.on('connect', () => {
+            isConnected = true;
+            reconnectAttempt = 0;
             lobbyStatus.innerHTML = '<font color="green">&#10004; Connected to server. Ready!</font>';
+            setButtonsEnabled(true);
+            updateConnectionIndicator(true);
+            
+            // If we were in a room before disconnect, we can't auto-rejoin
+            // because page refresh = new session. User must rejoin manually.
         });
 
-        socket.on('disconnect', () => {
-            lobbyStatus.innerHTML = '<font color="red">&#10008; Disconnected from server.</font>';
-            updateStatus('&#10008; Lost connection to server. Trying to reconnect...', 'red');
+        socket.on('disconnect', (reason) => {
+            isConnected = false;
+            updateConnectionIndicator(false);
+            
+            if (reason === 'io server disconnect') {
+                lobbyStatus.innerHTML = '<font color="red">&#10008; Disconnected by server.</font>';
+                updateStatus('&#10008; Disconnected by server.', 'red');
+            } else {
+                lobbyStatus.innerHTML = '<font color="orange">&#9888; Connection lost. Reconnecting...</font>';
+                updateStatus('&#9888; Connection lost. Reconnecting...', 'orange');
+            }
+            
+            setButtonsEnabled(false);
+        });
+
+        socket.on('connect_error', (error) => {
+            reconnectAttempt++;
+            lobbyStatus.innerHTML = `<font color="orange">&#9888; Connection failed (attempt ${reconnectAttempt}). Retrying...</font>`;
+            setButtonsEnabled(false);
+        });
+
+        socket.on('reconnect', (attemptNumber) => {
+            lobbyStatus.innerHTML = '<font color="green">&#10004; Reconnected!</font>';
+            setButtonsEnabled(true);
+            updateConnectionIndicator(true);
         });
 
         socket.on('error', (message) => {
-            alert('Error: ' + message);
-            updateStatus('&#10008; Error: ' + message, 'red');
+            showLobbyError(message);
+            updateStatus('&#10008; ' + message, 'red');
         });
 
         socket.on('room-created', async ({ roomCode, username }) => {
+            currentRoomCode = roomCode;
+            currentUsername = username;
             showRoom(roomCode, username);
             updateStatus('&#9203; Starting microphone...', 'blue');
-            await startLocalAudio();
-            userList.innerHTML = '';
-            usersInRoom = {};
-            usersInRoom[socket.id] = { username: username + ' (You)', muted: false };
-            updateUserList();
-            updateStatus('&#10004; Room created! Share code: <b>' + roomCode + '</b>', 'green');
+            
+            try {
+                await startLocalAudio();
+                userList.innerHTML = '';
+                usersInRoom = {};
+                usersInRoom[socket.id] = { username: username + ' (You)', muted: false };
+                updateUserList();
+                updateStatus('&#10004; Room created! Share code: <b>' + roomCode + '</b>', 'green');
+            } catch (err) {
+                updateStatus('&#10008; Microphone error: ' + err.message, 'red');
+            }
         });
 
         socket.on('room-joined', async ({ roomCode, username, existingUsers }) => {
+            currentRoomCode = roomCode;
+            currentUsername = username;
             showRoom(roomCode, username);
             updateStatus('&#9203; Starting microphone...', 'blue');
-            await startLocalAudio();
             
-            userList.innerHTML = '';
-            usersInRoom = {};
-            usersInRoom[socket.id] = { username: username + ' (You)', muted: false };
-            
-            updateStatus('&#9203; Connecting to ' + existingUsers.length + ' user(s)...', 'blue');
-            
-            for (const user of existingUsers) {
-                usersInRoom[user.socketId] = { username: user.username, muted: user.muted || false };
-                await createPeerConnection(user.socketId, true);
+            try {
+                await startLocalAudio();
+                
+                userList.innerHTML = '';
+                usersInRoom = {};
+                usersInRoom[socket.id] = { username: username + ' (You)', muted: false };
+                
+                updateStatus('&#9203; Connecting to ' + existingUsers.length + ' user(s)...', 'blue');
+                
+                for (const user of existingUsers) {
+                    usersInRoom[user.socketId] = { username: user.username, muted: user.muted || false };
+                    await createPeerConnection(user.socketId, true);
+                }
+                
+                updateUserList();
+                updateStatus('&#10004; Joined room! Connected to ' + existingUsers.length + ' user(s)', 'green');
+            } catch (err) {
+                updateStatus('&#10008; Error: ' + err.message, 'red');
             }
-            
-            updateUserList();
-            updateStatus('&#10004; Joined room! Connected to ' + existingUsers.length + ' user(s)', 'green');
         });
 
         socket.on('user-joined', async ({ username, socketId, muted }) => {
             usersInRoom[socketId] = { username, muted: muted || false };
             updateUserList();
-            updateStatus('&#8594; <b>' + username + '</b> joined the room [' + getTimestamp() + ']', 'blue');
+            updateStatus('&#8594; <b>' + username + '</b> joined [' + getTimestamp() + ']', 'blue');
         });
 
         socket.on('user-left', ({ socketId, username }) => {
             delete usersInRoom[socketId];
             updateUserList();
             closePeerConnection(socketId);
-            updateStatus('&#8592; <b>' + username + '</b> left the room [' + getTimestamp() + ']', 'orange');
+            updateStatus('&#8592; <b>' + username + '</b> left [' + getTimestamp() + ']', 'orange');
         });
 
         socket.on('user-mute-changed', ({ socketId, muted }) => {
@@ -271,34 +362,58 @@
                 usersInRoom[socketId].muted = muted;
                 updateUserList();
                 const username = usersInRoom[socketId].username;
-                if (muted) {
-                    updateStatus('&#128263; <b>' + username + '</b> muted [' + getTimestamp() + ']', 'gray');
-                } else {
-                    updateStatus('&#128264; <b>' + username + '</b> unmuted [' + getTimestamp() + ']', 'green');
+                if (socketId !== socket.id) {
+                    if (muted) {
+                        updateStatus('&#128263; <b>' + username + '</b> muted [' + getTimestamp() + ']', 'gray');
+                    } else {
+                        updateStatus('&#128264; <b>' + username + '</b> unmuted [' + getTimestamp() + ']', 'green');
+                    }
                 }
             }
         });
 
+        socket.on('left-room', () => {
+            // Confirmation that we left
+        });
+
         socket.on('offer', async ({ offer, fromId, fromUsername }) => {
             updateStatus('&#9203; Connecting to <b>' + fromUsername + '</b>...', 'blue');
-            await createPeerConnection(fromId, false);
-            await peerConnections[fromId].setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peerConnections[fromId].createAnswer();
-            await peerConnections[fromId].setLocalDescription(answer);
-            socket.emit('answer', { targetId: fromId, answer });
+            try {
+                await createPeerConnection(fromId, false);
+                await peerConnections[fromId].setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnections[fromId].createAnswer();
+                await peerConnections[fromId].setLocalDescription(answer);
+                socket.emit('answer', { targetId: fromId, answer });
+            } catch (err) {
+                console.error('Error handling offer:', err);
+                updateStatus('&#10008; Connection error', 'red');
+            }
         });
 
         socket.on('answer', async ({ answer, fromId }) => {
             if (peerConnections[fromId]) {
-                await peerConnections[fromId].setRemoteDescription(new RTCSessionDescription(answer));
-                updateStatus('&#10004; Voice connected!', 'green');
+                try {
+                    await peerConnections[fromId].setRemoteDescription(new RTCSessionDescription(answer));
+                    updateStatus('&#10004; Voice connected!', 'green');
+                } catch (err) {
+                    console.error('Error handling answer:', err);
+                }
             }
         });
 
         socket.on('ice-candidate', async ({ candidate, fromId }) => {
             if (peerConnections[fromId] && candidate) {
-                await peerConnections[fromId].addIceCandidate(new RTCIceCandidate(candidate));
+                try {
+                    await peerConnections[fromId].addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (err) {
+                    console.error('Error adding ICE candidate:', err);
+                }
             }
+        });
+
+        socket.on('pong-server', ({ timestamp }) => {
+            // Server is alive
+            updateConnectionIndicator(true);
         });
 
         // ============ USER LIST ============
@@ -306,6 +421,7 @@
         function updateUserList() {
             userList.innerHTML = '';
             const userCount = Object.keys(usersInRoom).length;
+            document.getElementById('userCount').textContent = userCount;
             
             for (const [socketId, user] of Object.entries(usersInRoom)) {
                 const li = document.createElement('li');
@@ -322,34 +438,66 @@
         // ============ ROOM ACTIONS ============
 
         function createRoom() {
-            const username = document.getElementById('usernameInput').value.trim();
-            if (!username) {
-                alert('Please enter your name first!');
+            if (!isConnected) {
+                showLobbyError('Not connected to server. Please wait...');
                 return;
             }
+            
+            const username = document.getElementById('usernameInput').value.trim();
+            if (!username) {
+                showLobbyError('Please enter your name first!');
+                return;
+            }
+            
+            if (username.length < 1) {
+                showLobbyError('Username is too short!');
+                return;
+            }
+            
             lobbyStatus.innerHTML = '<font color="blue">&#9203; Creating room...</font>';
+            setButtonsEnabled(false);
             socket.emit('create-room', username);
+            
+            // Re-enable buttons after timeout in case of no response
+            setTimeout(() => setButtonsEnabled(true), 5000);
         }
 
         function joinRoom() {
+            if (!isConnected) {
+                showLobbyError('Not connected to server. Please wait...');
+                return;
+            }
+            
             const username = document.getElementById('usernameInput').value.trim();
             const roomCode = document.getElementById('roomCodeInput').value.trim().toUpperCase();
             
             if (!username) {
-                alert('Please enter your name first!');
+                showLobbyError('Please enter your name first!');
                 return;
             }
+            
             if (!roomCode) {
-                alert('Please enter a room code!');
+                showLobbyError('Please enter a room code!');
                 return;
             }
+            
+            if (roomCode.length !== 6) {
+                showLobbyError('Room code must be 6 characters!');
+                return;
+            }
+            
             lobbyStatus.innerHTML = '<font color="blue">&#9203; Joining room...</font>';
+            setButtonsEnabled(false);
             socket.emit('join-room', { roomCode, username });
+            
+            // Re-enable buttons after timeout in case of no response
+            setTimeout(() => setButtonsEnabled(true), 5000);
         }
 
         function leaveRoom() {
             socket.emit('leave-room');
             
+            // Cleanup
             for (const id in peerConnections) {
                 closePeerConnection(id);
             }
@@ -360,6 +508,8 @@
             }
 
             usersInRoom = {};
+            currentRoomCode = null;
+            currentUsername = null;
             userList.innerHTML = '<li><i>No users yet...</i></li>';
             audioContainer.innerHTML = '';
             isMuted = false;
@@ -369,6 +519,7 @@
             roomDiv.hidden = true;
             lobbyDiv.hidden = false;
             lobbyStatus.innerHTML = '<font color="green">&#10004; Left room. Ready to join another!</font>';
+            setButtonsEnabled(true);
         }
 
         function showRoom(roomCode, username) {
@@ -383,12 +534,15 @@
         async function startLocalAudio() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: true, 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }, 
                     video: false 
                 });
             } catch (err) {
-                alert('Could not access microphone: ' + err.message);
-                updateStatus('&#10008; Microphone error: ' + err.message, 'red');
+                console.error('Microphone error:', err);
                 throw err;
             }
         }
@@ -422,6 +576,11 @@
         // ============ WEBRTC FUNCTIONS ============
 
         async function createPeerConnection(targetId, isInitiator) {
+            // Close existing connection if any
+            if (peerConnections[targetId]) {
+                peerConnections[targetId].close();
+            }
+            
             const pc = new RTCPeerConnection(rtcConfig);
             peerConnections[targetId] = pc;
 
@@ -450,15 +609,29 @@
                 
                 if (state === 'connected') {
                     updateStatus('&#10004; Voice connected!', 'green');
-                } else if (state === 'disconnected' || state === 'failed') {
-                    updateStatus('&#10008; Voice connection issue', 'orange');
+                } else if (state === 'disconnected') {
+                    updateStatus('&#9888; Voice connection interrupted', 'orange');
+                } else if (state === 'failed') {
+                    updateStatus('&#10008; Voice connection failed', 'red');
+                    // Try to reconnect
+                    closePeerConnection(targetId);
+                }
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'failed') {
+                    pc.restartIce();
                 }
             };
 
             if (isInitiator) {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                socket.emit('offer', { targetId, offer });
+                try {
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    socket.emit('offer', { targetId, offer });
+                } catch (err) {
+                    console.error('Error creating offer:', err);
+                }
             }
 
             return pc;
@@ -487,6 +660,37 @@
             const audio = document.getElementById('audio-' + peerId);
             if (audio) audio.remove();
         }
+
+        // ============ PERIODIC HEALTH CHECK ============
+
+        setInterval(() => {
+            if (isConnected && currentRoomCode) {
+                socket.emit('ping-server');
+            }
+        }, 30000);
+
+        // ============ HANDLE PAGE VISIBILITY ============
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && currentRoomCode) {
+                // Page became visible again, check connection
+                socket.emit('ping-server');
+            }
+        });
+
+        // ============ ENTER KEY HANDLERS ============
+
+        document.getElementById('usernameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('roomCodeInput').focus();
+            }
+        });
+
+        document.getElementById('roomCodeInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinRoom();
+            }
+        });
     </script>
 
 </body>
